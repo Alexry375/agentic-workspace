@@ -1,11 +1,28 @@
 # Procédure commune
 
+## Avant d'attaquer
+
+**État de l'art** (par défaut sur tâche complexe / workspace dédié) : 1-3
+recherches web minimum pour identifier repos / papers / outils récents (filtre
+≤ 12 mois sur les domaines qui bougent vite). Objectif : calibrer ton approche
+sur ce qui existe à la date du jour, pas réinventer ni rester sur ton training
+cutoff. Les agents sous-utilisent ce réflexe par défaut — c'est un biais à
+corriger activement.
+
 ## Pendant l'exécution
 
 - **Skill `genius`** : il est chargé automatiquement (`.claude/skills/genius/SKILL.md`).
   Applique-le sur toute affirmation factuelle, hypothèse, et claim de complétion.
 - **`inputs/` est en lecture seule.** Si tu dois travailler sur une copie, copie
   vers `outputs/work/`.
+- **Hold-out obligatoire** : si tu itères ton code jusqu'à ce qu'il passe sur un
+  dataset A, le score sur A est faussé. Mesure et rapporte sur un B que tu n'as
+  jamais touché pendant l'itération.
+- **Vérifier un sub-agent** : lis ses fichiers de sortie, pas son résumé.
+  (Pattern B uniquement : son transcript est aussi dans
+  `.claude/projects/<session>.jsonl`.)
+- **Processus longs (>30s)** : `run_in_background` + monitor logs. Détecter les
+  hang, jamais d'attente passive.
 
 ## Sous-tâches
 
@@ -18,6 +35,9 @@ utilise le tool `Agent`. Tu peux pré-charger un skill dans le sub-agent via
 le frontmatter `skills: [genius]` d'une définition d'agent dans
 `.claude/agents/<name>.md`. Le sub-agent retourne un **résumé structuré** que
 tu intègres à ton contexte — c'est ta compaction implicite.
+
+**Analyses indépendantes** (par item, par marché, par document) → un seul
+message avec N `Agent` calls en parallèle.
 
 ### Pattern B — Workspace dédié pour l'humain (sous-tâche lourde)
 
@@ -49,17 +69,28 @@ pourra zapper la plupart des questions d'alignement.
 - **Pas plus tard que 200 k** : au-delà, "dumb zone" documentée (perte de
   qualité non linéaire).
 
-## Avant tout claim de complétion
+## Audit adversarial
 
 **NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE.**
 
+Trigger 1 : avant tout claim de complétion.
+Trigger 2 : **après toute avancée majeure** — pas juste à la livraison finale.
+Avancée majeure = feature end-to-end fonctionnelle, décision d'archi committée,
+1ère version livrable d'un module, pivot de stratégie.
+
 1. Lance un sous-agent `audit-adversarial` (`Agent` tool) avec consigne :
-   *"Cherche TOUS les problèmes possibles dans le travail livré : violations
-   de spec, oublis, erreurs d'inattention, anti-patterns, edge cases non
-   testés. Classe en CRITIQUE / IMPORTANT / MINEUR. Cite fichier:ligne pour
-   chaque finding."*
-2. Si findings CRITIQUE ou IMPORTANT : traite-les. Re-audit après.
-3. Une fois propre : écris la livraison dans `outputs/`.
+   *"Attaque à tous les niveaux le travail récent :*
+   *— Code : bugs, edge cases non testés, anti-patterns, fichiers oubliés,
+   erreurs d'inattention.*
+   *— Architecture : choix structurels fragiles, hypothèses implicites, dette
+   qui va exploser.*
+   *— Stratégie / cadrage : la métrique optimisée est-elle la bonne ? Le
+   problème est-il bien posé ? Quelle limite n'a pas été anticipée ?*
+   *Classe CRITIQUE / IMPORTANT / MINEUR. Cite fichier:ligne ou décision
+   précise pour chaque finding."*
+2. Findings CRITIQUE ou IMPORTANT → traite. Re-audit après.
+3. Une fois propre : continue (ou écris la livraison dans `outputs/` si fin de
+   projet).
 
 ## Format de `outputs/`
 
@@ -83,4 +114,5 @@ Une seule fois, écris une question dans `outputs/blocked.md` avec :
 - 2-3 options possibles avec leur conséquence
 
 Puis termine. **Ne brute-force pas** après deux tentatives ratées sur le
-même sous-problème — lance plutôt un `Agent` d'analyse parallèle.
+même sous-problème — lance plutôt un `Agent` d'analyse parallèle, ou pose
+une question de fond. C'est du cadrage, pas de l'effort.
