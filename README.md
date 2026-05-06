@@ -21,18 +21,6 @@ agentic-workspace/
 
 One template, one shared procedure, one skill. Everything else is added only with documented ROI.
 
-## Why so minimal?
-
-A few data points from the public literature (May 2026):
-
-- On **SWE-bench Pro** with the same model (Opus 4.5), the spread between three real-world harnesses is only **5.2 points** (Auggie 51.8% / Claude Code 55.4% / Cursor 50.2%). Source: [morphllm.com/swe-bench-pro](https://www.morphllm.com/swe-bench-pro).
-- Bare `mini-swe-agent` (Claude + bash, ~100 lines of Python) hits **51.9% Pro** with Opus 4.6 — within 3-7 points of full Claude Code.
-- On Anthropic's BrowseComp eval, **token usage alone explains 80% of the variance** ([Multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system)).
-
-→ The model matters far more than the harness. The harness gives you ~5-10 marginal points, not 30.
-
-So instead of starting from a 30-skills + 13-hooks template and trying to figure out what's actually pulling weight, this V1 starts from **nothing** and will only add bricks with documented ROI.
-
 ## Installation
 
 ```bash
