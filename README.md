@@ -6,7 +6,7 @@ A minimalist `workspace/` template for Claude Code agents. **One-shot autonomous
 agentic-workspace/
 ├── bin/
 │   └── aw                 # CLI: aw new <name> / aw list
-├── install.sh             # adds bin/ to your PATH (interactive, idempotent)
+├── install.sh             # symlinks bin/aw → ~/.local/bin/aw (idempotent, no prompt)
 ├── shared/
 │   └── procedure.md       # common procedure (~70 lines, imported by template)
 ├── template/              # classic workspace (with a human at t=0)
@@ -26,12 +26,11 @@ One template, one shared procedure, one skill. Everything else is added only wit
 ```bash
 git clone https://github.com/Alexry375/agentic-workspace.git
 cd agentic-workspace
-./install.sh    # appends `bin/` to your PATH in ~/.bashrc or ~/.zshrc (asks first)
-# Open a new shell, then verify:
-aw help
+./install.sh    # symlinks bin/aw → ~/.local/bin/aw (no prompt, no shell-rc edit)
+aw help         # verify
 ```
 
-If you prefer not to modify your shell rc, just call `./bin/aw` directly from the repo or add `bin/` to your `PATH` manually.
+`~/.local/bin` is in `PATH` by default on most modern shells. If yours isn't, `install.sh` will print the one line to add. To uninstall: `rm ~/.local/bin/aw`.
 
 You also need [Claude Code](https://docs.claude.com/en/docs/claude-code) installed (`claude` in your PATH).
 

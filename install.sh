@@ -1,57 +1,45 @@
 #!/usr/bin/env bash
-# install.sh — add agentic-workspace's bin/ to your shell PATH
+# install.sh — make `aw` callable from anywhere.
 #
-# Detects bash or zsh, appends an export PATH line to the right rc file.
-# Asks for confirmation before writing. Idempotent.
+# Strategy: symlink bin/aw → ~/.local/bin/aw (standard XDG user-binary path,
+# in PATH by default on most modern Linux/macOS shells). No interactive
+# prompt, no shell-rc modification. Idempotent.
+# If ~/.local/bin is not in PATH, prints how to add it manually.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BIN_DIR="$REPO_ROOT/bin"
+SRC="$REPO_ROOT/bin/aw"
+DST_DIR="$HOME/.local/bin"
+DST="$DST_DIR/aw"
 
-if [ ! -x "$BIN_DIR/aw" ]; then
-  echo "Making bin/aw executable..."
-  chmod +x "$BIN_DIR/aw"
+if [ ! -f "$SRC" ]; then
+  echo "Error: $SRC not found. Run install.sh from the repo root." >&2
+  exit 1
 fi
 
-# Detect shell
-shell_name="$(basename "${SHELL:-bash}")"
-case "$shell_name" in
-  bash) rc_file="$HOME/.bashrc" ;;
-  zsh)  rc_file="$HOME/.zshrc" ;;
-  *)
-    echo "Unsupported shell: $shell_name"
-    echo "Add this line manually to your shell rc file:"
-    echo "  export PATH=\"$BIN_DIR:\$PATH\""
-    exit 1
-    ;;
-esac
+chmod +x "$SRC"
+mkdir -p "$DST_DIR"
 
-export_line="export PATH=\"$BIN_DIR:\$PATH\"  # agentic-workspace"
-
-if grep -qF "$BIN_DIR" "$rc_file" 2>/dev/null; then
-  echo "Already installed: $BIN_DIR is in $rc_file"
-  echo "Open a new shell or run: source $rc_file"
-  exit 0
+if [ -L "$DST" ] && [ "$(readlink "$DST")" = "$SRC" ]; then
+  echo "Already installed: $DST → $SRC"
+elif [ -e "$DST" ] || [ -L "$DST" ]; then
+  echo "Error: $DST already exists and is not our symlink." >&2
+  echo "Remove it manually then re-run: rm $DST" >&2
+  exit 1
+else
+  ln -s "$SRC" "$DST"
+  echo "Installed: $DST → $SRC"
 fi
 
-echo "About to add this line to $rc_file:"
-echo ""
-echo "  $export_line"
-echo ""
-read -r -p "Proceed? [y/N] " response
-case "$response" in
-  [yY][eE][sS]|[yY])
-    {
-      echo ""
-      echo "# agentic-workspace — added by install.sh on $(date '+%Y-%m-%d')"
-      echo "$export_line"
-    } >> "$rc_file"
-    echo "Done. Open a new shell or run: source $rc_file"
-    echo "Then verify: aw help"
-    ;;
-  *)
-    echo "Aborted. To install manually, add this line to $rc_file:"
-    echo "  $export_line"
-    ;;
-esac
+if ! echo ":$PATH:" | grep -q ":$DST_DIR:"; then
+  cat <<EOF
+
+Note: $DST_DIR is not in your PATH.
+Add this line to your shell rc (~/.bashrc or ~/.zshrc):
+  export PATH="$DST_DIR:\$PATH"
+Or call $SRC directly with its full path.
+EOF
+else
+  echo "Run 'aw help' to verify."
+fi
