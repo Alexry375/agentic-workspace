@@ -1,15 +1,26 @@
-# agentic-workspace — V0
+# agentic-workspace — V1
 
-A radically minimal `workspace/` template for Claude Code agents.
+A minimalist `workspace/` template for Claude Code agents. **One-shot autonomous by default**, with a documented exception for irreducible human-in-the-loop projects.
 
 ```
 agentic-workspace/
-├── CLAUDE.md     # 20 lines: read inputs/, do the task, write to outputs/
-├── inputs/       # user puts stuff here
-└── outputs/      # agent writes here
+├── shared/
+│   └── procedure.md       # common procedure (~50 lines, used by both templates below)
+├── template/              # classic workspace (with a human at t=0)
+│   ├── CLAUDE.md          # imports shared/ + 5 alignment requirements at boot
+│   ├── inputs/            # human drops content here
+│   └── outputs/           # agent writes here
+├── template-sub/          # sub-workspace (no human, called by a parent agent)
+│   ├── CLAUDE.md          # imports shared/ + structured task.json contract
+│   ├── inputs/
+│   └── outputs/
+├── .claude/skills/genius/ # cognitive discipline skill, auto-loaded
+├── IDENTITY.example.md    # template — copy to IDENTITY.md and fill (gitignored)
+├── README.md
+└── LICENSE
 ```
 
-That's it. No skills, no hooks, no MCP, no sub-agents pre-configured. **By design.**
+Two templates, one shared procedure, one skill. Everything else is added only with documented ROI.
 
 ## Why so minimal?
 
@@ -25,19 +36,40 @@ So instead of starting from a 30-skills + 13-hooks template and trying to figure
 
 ## Usage
 
-```bash
-# 1. Drop your project, data, or task description into inputs/
-cp -r ~/some-repo agentic-workspace/inputs/
+For now, manual. A `bin/create-work` / `bin/create-sub-work` script is planned.
 
-# 2. Launch Claude Code from the workspace root
-cd agentic-workspace/
+### Classic workspace (with a human)
+
+```bash
+# 1. Copy the classic template into a new workspace
+cp -r template/ workspaces/my-project/
+
+# 2. Drop your project, data, or task description into inputs/
+cp -r ~/some-repo workspaces/my-project/inputs/
+
+# 3. Launch Claude Code from the workspace
+cd workspaces/my-project/
 claude
 
-# 3. Tell the agent what you want
-> Start FR — refactor the auth flow in inputs/some-repo/, write the result to outputs/
+# 4. The agent will:
+#    - read IDENTITY.md, inputs/
+#    - run the 5-requirement alignment in one reply (0-3 questions max)
+#    - work autonomously until outputs/ is filled
 ```
 
-The agent reads everything in `inputs/`, does what you asked, writes results to `outputs/`. Nothing else.
+### Sub-workspace (no human, called by a parent agent)
+
+```bash
+# Parent agent populates inputs/task.json with a structured contract
+cp -r template-sub/ workspaces/sub-task-name/
+# (parent writes task.json describing objective, deliverable schema, success criteria)
+
+# Parent then runs:
+cd workspaces/sub-task-name/ && claude -p "$(cat inputs/task.json)" \
+  --output-format json --max-turns 50 > outputs/result.json
+```
+
+Why a separate process and not the `Agent` tool? Because Claude Code's `Agent` tool starts in the parent's cwd and won't load the sub-workspace's `CLAUDE.md` or local skills, and subagents cannot recursively spawn other subagents. A standalone `claude -p` process gets the right `CLAUDE.md` hierarchy, full skill loading, and recursion.
 
 ## Design constraints
 
@@ -48,7 +80,7 @@ The agent reads everything in `inputs/`, does what you asked, writes results to 
 
 ## Status
 
-V0 baseline. Experimental. Public for transparency and feedback.
+V1. Experimental. Public for transparency and feedback.
 
 Future versions (V1, V2, ...) will add bricks one at a time, each justified by a measured improvement on a benchmark we run ourselves (since no public benchmark currently measures "build a complete app from scratch" — see [METR Time Horizon](https://metr.org/time-horizons/) for the closest thing).
 
