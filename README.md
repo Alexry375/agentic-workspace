@@ -5,7 +5,7 @@ A minimalist `workspace/` template for Claude Code agents. **One-shot autonomous
 ```
 agentic-workspace/
 ├── bin/
-│   └── aw                 # CLI: aw new <name> / aw open <name> / aw list
+│   └── aw                 # CLI: aw new <name> / aw list
 ├── install.sh             # adds bin/ to your PATH (interactive, idempotent)
 ├── shared/
 │   └── procedure.md       # common procedure (~70 lines, imported by template)
@@ -56,8 +56,9 @@ aw new my-project
 # 2. Drop your project, data, or task description into inputs/
 cp -r ~/some-repo workspaces/my-project/inputs/
 
-# 3. Launch Claude Code from the workspace
-aw open my-project
+# 3. Launch Claude Code from the workspace (cd yourself — pass any flags you want)
+cd workspaces/my-project
+claude              # or: claude --continue, claude --resume, etc.
 
 # 4. The agent will:
 #    - read IDENTITY.md, inputs/

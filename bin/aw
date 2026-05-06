@@ -3,9 +3,11 @@
 #
 # Usage:
 #   aw new <name>    Create a new workspace from template/
-#   aw open <name>   cd into the workspace and launch claude
 #   aw list          List existing workspaces
 #   aw help          Show this help
+#
+# To launch Claude in a workspace, cd into it yourself:
+#   cd workspaces/<name> && claude          # (or claude --continue, etc.)
 #
 # The repo root is detected from this script's location.
 
@@ -23,9 +25,11 @@ aw — agentic-workspace CLI
 
 Usage:
   aw new <name>    Create a new workspace at workspaces/<name>/ from template/
-  aw open <name>   cd into the workspace and launch claude
   aw list          List existing workspaces
   aw help          Show this help
+
+To launch Claude in a workspace, cd into it yourself:
+  cd $WORKSPACES_DIR/<name> && claude          # (or claude --continue, etc.)
 
 Repo root: $REPO_ROOT
 EOF
@@ -63,32 +67,7 @@ cmd_new() {
   echo "Created workspace: $target"
   echo "Next:"
   echo "  - drop content into $target/inputs/"
-  echo "  - run: aw open $name"
-}
-
-cmd_open() {
-  if [ $# -lt 1 ]; then
-    echo "Error: missing workspace name." >&2
-    echo "Usage: aw open <name>" >&2
-    exit 1
-  fi
-  local name="$1"
-  local target="$WORKSPACES_DIR/$name"
-
-  if [ ! -d "$target" ]; then
-    echo "Error: workspace '$name' not found at $target" >&2
-    echo "Available workspaces:" >&2
-    cmd_list 1>&2
-    exit 1
-  fi
-
-  cd "$target"
-  if ! command -v claude >/dev/null 2>&1; then
-    echo "Error: 'claude' command not found in PATH." >&2
-    echo "Install Claude Code first: https://docs.claude.com/en/docs/claude-code" >&2
-    exit 1
-  fi
-  exec claude
+  echo "  - cd $target && claude"
 }
 
 cmd_list() {
@@ -123,7 +102,6 @@ shift
 
 case "$subcommand" in
   new)   cmd_new "$@" ;;
-  open)  cmd_open "$@" ;;
   list)  cmd_list "$@" ;;
   help|-h|--help) cmd_help ;;
   *)
