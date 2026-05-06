@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# aw — agentic-workspace CLI
+#
+# Usage:
+#   aw new <name>    Create a new workspace from template/
+#   aw open <name>   cd into the workspace and launch claude
+#   aw list          List existing workspaces
+#   aw help          Show this help
+#
+# The repo root is detected from this script's location.
+
+set -euo pipefail
+
+# Resolve repo root (parent of bin/)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+TEMPLATE_DIR="$REPO_ROOT/template"
+WORKSPACES_DIR="$REPO_ROOT/workspaces"
+
+cmd_help() {
+  cat <<EOF
+aw — agentic-workspace CLI
+
+Usage:
+  aw new <name>    Create a new workspace at workspaces/<name>/ from template/
+  aw open <name>   cd into the workspace and launch claude
+  aw list          List existing workspaces
+  aw help          Show this help
+
+Repo root: $REPO_ROOT
+EOF
+}
+
+cmd_new() {
+  if [ $# -lt 1 ]; then
+    echo "Error: missing workspace name." >&2
+    echo "Usage: aw new <name>" >&2
+    exit 1
+  fi
+  local name="$1"
+  local target="$WORKSPACES_DIR/$name"
+
+  if [ -e "$target" ]; then
+    echo "Error: workspace '$name' already exists at $target" >&2
+    exit 1
+  fi
+
+  if [ ! -d "$TEMPLATE_DIR" ]; then
+    echo "Error: template/ not found at $TEMPLATE_DIR" >&2
+    exit 1
+  fi
+
+  mkdir -p "$WORKSPACES_DIR"
+  cp -r "$TEMPLATE_DIR" "$target"
+
+  # Adjust the @import path inside the copied CLAUDE.md so it still
+  # resolves to <repo>/shared/procedure.md (now two levels up instead of one).
+  if [ -f "$target/CLAUDE.md" ]; then
+    sed -i.bak 's|@\.\./shared/procedure\.md|@../../shared/procedure.md|g' \
+      "$target/CLAUDE.md" && rm -f "$target/CLAUDE.md.bak"
+  fi
+
+  echo "Created workspace: $target"
+  echo "Next:"
+  echo "  - drop content into $target/inputs/"
+  echo "  - run: aw open $name"
+}
+
+cmd_open() {
+  if [ $# -lt 1 ]; then
+    echo "Error: missing workspace name." >&2
+    echo "Usage: aw open <name>" >&2
+    exit 1
+  fi
+  local name="$1"
+  local target="$WORKSPACES_DIR/$name"
+
+  if [ ! -d "$target" ]; then
+    echo "Error: workspace '$name' not found at $target" >&2
+    echo "Available workspaces:" >&2
+    cmd_list 1>&2
+    exit 1
+  fi
+
+  cd "$target"
+  if ! command -v claude >/dev/null 2>&1; then
+    echo "Error: 'claude' command not found in PATH." >&2
+    echo "Install Claude Code first: https://docs.claude.com/en/docs/claude-code" >&2
+    exit 1
+  fi
+  exec claude
+}
+
+cmd_list() {
+  if [ ! -d "$WORKSPACES_DIR" ] || [ -z "$(ls -A "$WORKSPACES_DIR" 2>/dev/null)" ]; then
+    echo "No workspaces yet."
+    echo "Create one with: aw new <name>"
+    return 0
+  fi
+
+  printf "%-30s %-12s %-20s\n" "NAME" "INPUTS" "LAST MODIFIED"
+  printf "%-30s %-12s %-20s\n" "----" "------" "-------------"
+  for dir in "$WORKSPACES_DIR"/*/; do
+    [ -d "$dir" ] || continue
+    local name
+    name="$(basename "$dir")"
+    local input_count
+    input_count="$(find "$dir/inputs" -mindepth 1 -not -name '.gitkeep' 2>/dev/null | wc -l)"
+    local mtime
+    mtime="$(date -r "$dir" '+%Y-%m-%d %H:%M' 2>/dev/null || echo '?')"
+    printf "%-30s %-12s %-20s\n" "$name" "$input_count files" "$mtime"
+  done
+}
+
+# Dispatch
+if [ $# -eq 0 ]; then
+  cmd_help
+  exit 0
+fi
+
+subcommand="$1"
+shift
+
+case "$subcommand" in
+  new)   cmd_new "$@" ;;
+  open)  cmd_open "$@" ;;
+  list)  cmd_list "$@" ;;
+  help|-h|--help) cmd_help ;;
+  *)
+    echo "Unknown subcommand: $subcommand" >&2
+    echo "" >&2
+    cmd_help 1>&2
+    exit 1
+    ;;
+esac

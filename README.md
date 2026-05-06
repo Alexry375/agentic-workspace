@@ -4,6 +4,9 @@ A minimalist `workspace/` template for Claude Code agents. **One-shot autonomous
 
 ```
 agentic-workspace/
+├── bin/
+│   └── aw                 # CLI: aw new <name> / aw open <name> / aw list
+├── install.sh             # adds bin/ to your PATH (interactive, idempotent)
 ├── shared/
 │   └── procedure.md       # common procedure (~70 lines, imported by template)
 ├── template/              # classic workspace (with a human at t=0)
@@ -30,25 +33,39 @@ A few data points from the public literature (May 2026):
 
 So instead of starting from a 30-skills + 13-hooks template and trying to figure out what's actually pulling weight, this V1 starts from **nothing** and will only add bricks with documented ROI.
 
-## Usage
-
-For now, manual. A `bin/create-work` script is planned.
+## Installation
 
 ```bash
-# 1. Copy the classic template into a new workspace
-cp -r template/ workspaces/my-project/
+git clone https://github.com/Alexry375/agentic-workspace.git
+cd agentic-workspace
+./install.sh    # appends `bin/` to your PATH in ~/.bashrc or ~/.zshrc (asks first)
+# Open a new shell, then verify:
+aw help
+```
+
+If you prefer not to modify your shell rc, just call `./bin/aw` directly from the repo or add `bin/` to your `PATH` manually.
+
+You also need [Claude Code](https://docs.claude.com/en/docs/claude-code) installed (`claude` in your PATH).
+
+## Usage
+
+```bash
+# 1. Create a new workspace
+aw new my-project
 
 # 2. Drop your project, data, or task description into inputs/
 cp -r ~/some-repo workspaces/my-project/inputs/
 
 # 3. Launch Claude Code from the workspace
-cd workspaces/my-project/
-claude
+aw open my-project
 
 # 4. The agent will:
 #    - read IDENTITY.md, inputs/
 #    - run the 5-requirement alignment in one reply (0-3 questions max)
 #    - work autonomously until outputs/ is filled
+
+# List workspaces:
+aw list
 ```
 
 ## Sub-tasks: two patterns, no recursive process
