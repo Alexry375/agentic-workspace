@@ -10,6 +10,10 @@
 2. Lis l'intégralité de `inputs/`.
 3. Si la demande de l'humain a été énoncée par message après le lancement,
    traite-la comme un input supplémentaire.
+4. **Si `inputs/prompt.md` existe** : il a été préparé par un autre agent
+   pour toi. Considère-le comme la spec autoritaire de la tâche — la plupart
+   des questions d'alignement ci-dessous (§2) sont déjà répondues par ce
+   fichier.
 
 ## La Procédure (5 exigences, en une seule réponse)
 

@@ -5,22 +5,18 @@ A minimalist `workspace/` template for Claude Code agents. **One-shot autonomous
 ```
 agentic-workspace/
 ├── shared/
-│   └── procedure.md       # common procedure (~50 lines, used by both templates below)
+│   └── procedure.md       # common procedure (~70 lines, imported by template)
 ├── template/              # classic workspace (with a human at t=0)
 │   ├── CLAUDE.md          # imports shared/ + 5 alignment requirements at boot
-│   ├── inputs/            # human drops content here
+│   ├── inputs/            # human (or another agent) drops content here
 │   └── outputs/           # agent writes here
-├── template-sub/          # sub-workspace (no human, called by a parent agent)
-│   ├── CLAUDE.md          # imports shared/ + structured task.json contract
-│   ├── inputs/
-│   └── outputs/
 ├── .claude/skills/genius/ # cognitive discipline skill, auto-loaded
 ├── IDENTITY.example.md    # template — copy to IDENTITY.md and fill (gitignored)
 ├── README.md
 └── LICENSE
 ```
 
-Two templates, one shared procedure, one skill. Everything else is added only with documented ROI.
+One template, one shared procedure, one skill. Everything else is added only with documented ROI.
 
 ## Why so minimal?
 
@@ -32,13 +28,11 @@ A few data points from the public literature (May 2026):
 
 → The model matters far more than the harness. The harness gives you ~5-10 marginal points, not 30.
 
-So instead of starting from a 30-skills + 13-hooks template and trying to figure out what's actually pulling weight, this V0 starts from **nothing** and will only add bricks with documented ROI.
+So instead of starting from a 30-skills + 13-hooks template and trying to figure out what's actually pulling weight, this V1 starts from **nothing** and will only add bricks with documented ROI.
 
 ## Usage
 
-For now, manual. A `bin/create-work` / `bin/create-sub-work` script is planned.
-
-### Classic workspace (with a human)
+For now, manual. A `bin/create-work` script is planned.
 
 ```bash
 # 1. Copy the classic template into a new workspace
@@ -57,37 +51,32 @@ claude
 #    - work autonomously until outputs/ is filled
 ```
 
-### Sub-workspace (no human, called by a parent agent)
+## Sub-tasks: two patterns, no recursive process
 
-```bash
-# Parent agent populates inputs/task.json with a structured contract
-cp -r template-sub/ workspaces/sub-task-name/
-# (parent writes task.json describing objective, deliverable schema, success criteria)
+When the agent needs to delegate part of the work, two patterns only:
 
-# Parent then runs:
-cd workspaces/sub-task-name/ && claude -p "$(cat inputs/task.json)" \
-  --output-format json --max-turns 50 > outputs/result.json
-```
+- **Intra-workspace delegation** → use the Claude Code `Agent` tool. Optionally pre-load skills via `.claude/agents/<name>.md` frontmatter (`skills: [genius]`). The sub-agent returns a structured summary that you fold back into your context — implicit compaction, no token waste on transcripts.
+- **Heavy work that deserves its own session** → the agent prepares a new workspace under `workspaces/<name>/`, drops a complete prompt in `inputs/prompt.md`, and asks the human to run `claude` there. No nested `claude -p` processes; the human stays in the loop for these cases (low cost: just a launch command). The new agent sees the prepared prompt and skips most alignment questions.
 
-Why a separate process and not the `Agent` tool? Because Claude Code's `Agent` tool starts in the parent's cwd and won't load the sub-workspace's `CLAUDE.md` or local skills, and subagents cannot recursively spawn other subagents. A standalone `claude -p` process gets the right `CLAUDE.md` hierarchy, full skill loading, and recursion.
+No recursive `claude -p`, no `template-sub/`. Recursion adds complexity (control loss, lost visibility, cost overhead) for benefit that does not appear in any public benchmark — we'll add it only when measured ROI justifies it.
 
 ## Design constraints
 
 - **≤ 8 GB RAM** for the workspace alone (rules out massive parallelism)
 - **No paid external APIs** — Claude Max subscription only
 - **Self-contained** — no dependencies outside the workspace directory
-- **Caller-agnostic** — invocable by a human or by a parent Claude Code agent (recursive instantiation)
+- **Caller-agnostic** — invocable by a human or by a parent Claude Code agent (the parent prepares `inputs/prompt.md`)
 
 ## Status
 
 V1. Experimental. Public for transparency and feedback.
 
-Future versions (V1, V2, ...) will add bricks one at a time, each justified by a measured improvement on a benchmark we run ourselves (since no public benchmark currently measures "build a complete app from scratch" — see [METR Time Horizon](https://metr.org/time-horizons/) for the closest thing).
+Future versions will add bricks one at a time, each justified by a measured improvement on a benchmark we run ourselves (since no public benchmark currently measures "build a complete app from scratch" — see [METR Time Horizon](https://metr.org/time-horizons/) for the closest thing).
 
 ## Open questions we're trying to answer
 
 - How do you pose the **k highest-information questions** at t=0 instead of asking k random ones? (active questioning, GATE-style)
-- How do you keep intent stable across `/clear` and compaction without paying for it in tokens? (ledger pattern, à la [MitchellkellerLG/claude-workspace-template](https://github.com/MitchellkellerLG/claude-workspace-template))
+- How do you keep intent stable across `/clear` and compaction without paying for it in tokens? (sub-agents-as-compaction vs ledger files)
 - How do you turn a free-form spec into machine-checkable rules at the start of a project, so violations are blocked by a hook instead of caught by a post-hoc audit?
 - Where exactly is the marginal ROI of an extra skill / hook / sub-agent on a real project?
 
