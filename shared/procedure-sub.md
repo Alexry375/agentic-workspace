@@ -31,8 +31,11 @@ Trois contraintes non négociables qui te distinguent d'un workspace top-level :
 
 ## Pendant l'exécution
 
-- **Skill `genius`** : chargé automatiquement (`.claude/skills/genius/SKILL.md`).
+- **Skill `genius`** : actif au niveau utilisateur
+  (`~/.claude/skills/genius/SKILL.md`), donc disponible automatiquement.
   Applique-le sur toute affirmation factuelle, hypothèse, claim de complétion.
+  Quand tu spawn un `Agent` pour Explore / Plan / audit, inclus dans son
+  prompt : *"Avant d'agir, lis et applique `~/.claude/skills/genius/SKILL.md`."*
 - **`inputs/` est en lecture seule.** Si tu dois travailler sur une copie,
   copie vers `outputs/work/`.
 - **Hold-out obligatoire** : si tu itères sur un dataset A jusqu'à ce que ça

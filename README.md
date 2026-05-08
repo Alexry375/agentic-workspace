@@ -1,18 +1,17 @@
 # agentic-workspace — V2
 
-A minimalist `workspace/` template for Claude Code agents. **One-shot autonomous by default**, with a documented exception for irreducible human-in-the-loop projects. Workspaces are self-contained: each one ships its own copy of the procedure and the `genius` skill, so moving or deleting the cloned repo never breaks an existing workspace.
+A minimalist `workspace/` template for Claude Code agents. **One-shot autonomous by default**, with a documented exception for irreducible human-in-the-loop projects. Workspaces inline their procedure into a self-contained `CLAUDE.md`, so moving or deleting the cloned repo never breaks an existing workspace. The `genius` skill is installed once at the user level and shared across all workspaces.
 
 ```
 agentic-workspace/
-├── bin/aw                              # CLI: aw new / aw report / aw list
+├── bin/aw                              # CLI: aw new / aw report / aw list / aw context
 ├── install.sh                          # wizard: writes ~/.agentic-workspace/config.json
 ├── shared/
 │   ├── procedure.md                    # workspace top-level procedure (inlined into CLAUDE.md)
 │   ├── procedure-sub.md                # sub-workspace procedure (inlined when --sub)
-│   └── skills/genius/SKILL.md          # cognitive discipline skill (copied into each workspace)
-├── .claude/
-│   ├── skills/genius -> ../../shared/skills/genius   # symlink, keeps the meta-repo covered
-│   └── commands/{genius-on,genius-off}.md            # slash commands to toggle the hook
+│   ├── agent-brief.md                  # dense brief printed by `aw context`
+│   └── skills/genius/SKILL.md          # cognitive discipline skill (synced with ~/.claude/)
+├── .claude/skills/genius -> ../../shared/skills/genius   # symlink, meta-repo coverage
 ├── IDENTITY.example.md                 # copy to IDENTITY.md and fill (gitignored)
 ├── ONBOARDING.md                       # context handoff for a fresh session on this repo
 ├── README.md
@@ -79,16 +78,14 @@ aw list
 
 There is no global registry — workspaces live under `$PWD/workspaces/` wherever you ran `aw new`. By design.
 
-## The `genius` hook
+## The `genius` skill and hook
 
-A `UserPromptSubmit` hook configured at the user level prepends `[GENIUS] ...` reminders to every prompt, but **only when the flag file `~/.agentic-workspace/genius-hook-on` exists**. The flag is off by default. Toggle it from any session:
+Two reinforcing mechanisms, both always on at the user level:
 
-```
-/genius-on     # touches the flag, hook fires from the next turn onward
-/genius-off    # removes the flag, hook stays silent
-```
+- **Skill** — `~/.claude/skills/genius/SKILL.md` (kept in sync with `shared/skills/genius/SKILL.md`). Auto-discovered in every Claude Code session of the user. `aw new` does not copy it locally; workspaces rely on the user-level install.
+- **Hook** — a `UserPromptSubmit` entry in `~/.claude/settings.json` prepends `[GENIUS] ...` to every prompt unconditionally.
 
-No restart needed. The hook is silent inside generated workspaces by default — the `genius` skill is auto-loaded there instead, which is the more focused mechanism.
+**Sub-agents (`Agent` tool) edge case.** A sub-agent auto-discovers skills via their description, but auto-invocation of `genius` is not reliable. When you spawn a sub-agent on a non-trivial task, include in its prompt: *"Before acting, read and apply `~/.claude/skills/genius/SKILL.md`."* The sub-agent shares the filesystem with the parent, that path always resolves.
 
 ## Sub-tasks: two patterns, no recursive process
 
@@ -103,7 +100,7 @@ No recursive `claude -p`. Recursion adds complexity (control loss, lost visibili
 
 - **≤ 8 GB RAM** for the workspace alone (rules out massive parallelism)
 - **No paid external APIs** — Claude Max subscription only
-- **Self-contained** — each workspace ships its own procedure and skill, no hard dependency on the cloned repo at runtime (only at creation time)
+- **Self-contained procedure** — each workspace ships its own `CLAUDE.md` (procedure inlined). No hard dependency on the cloned repo path at runtime, only at `aw new` time. The `genius` skill is the one exception: it is sourced from the user-level `~/.claude/skills/`.
 - **Caller-agnostic** — invocable by a human or by a parent Claude Code agent
 
 ## Status

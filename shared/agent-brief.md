@@ -21,26 +21,27 @@ biais vers la **soustraction**, pas l'accumulation.
 │   ├── procedure-sub.md             ← sub-workspace (inlinée par aw new --sub)
 │   ├── agent-brief.md               ← CE FICHIER, sorti par aw context
 │   └── skills/genius/SKILL.md       ← skill copié dans chaque workspace
-├── .claude/
-│   ├── skills/genius -> ../../shared/skills/genius   (symlink, méta-repo)
-│   └── commands/{genius-on,genius-off}.md
+├── .claude/skills/genius -> ../../shared/skills/genius   (symlink, méta-repo)
 └── README.md, LICENSE
 
 ~/.agentic-workspace/                ← état per-machine
 ├── config.json                      {repo_path, reports_path}
-├── reports.jsonl                    append-only bilans
-└── genius-hook-on                   flag-file (présent ⇒ hook actif)
+└── reports.jsonl                    append-only bilans
+
+~/.claude/                           ← niveau utilisateur, prérequis
+├── settings.json                    hook UserPromptSubmit "[GENIUS] ..." actif
+└── skills/genius/SKILL.md           skill canonique, auto-disponible
 
 $PWD/workspaces/<name>/              ← créé n'importe où par aw new
 ├── CLAUDE.md                        procedure inlinée (pas d'@import)
-├── .claude/skills/genius/SKILL.md   copie locale
 ├── inputs/                          contenu utilisateur / spec
 └── outputs/                         livrables de l'agent
 ```
 
-**Invariant clé** : un workspace est self-contained. Déplacer ou supprimer le
-dépôt cloné ne casse aucun workspace existant. Le dépôt n'est requis qu'au
-moment du `aw new`.
+**Invariant clé** : un workspace est self-contained pour sa procédure (CLAUDE.md
+inliné, pas d'`@import`). Déplacer ou supprimer le dépôt ne casse aucun
+workspace existant. Le skill `genius` est en revanche au niveau utilisateur,
+donc le workspace présume un setup `~/.claude/skills/genius/` actif.
 
 ## Les commandes (toutes lisibles dans `bin/aw`)
 
@@ -81,30 +82,21 @@ Le flag `--sub` n'est pas cosmétique, il change la procédure inlinée :
 
 ## Hook & skill « genius »
 
-Deux mécanismes distincts qui ne se télescopent **pas** :
+Les deux sont actifs en permanence au niveau utilisateur.
 
-- **Le skill** (`shared/skills/genius/SKILL.md`) est copié dans chaque
-  workspace créé. Il s'auto-charge dès qu'un agent bosse dans le workspace.
-  C'est le mécanisme principal.
-- **Le hook** `UserPromptSubmit` au niveau utilisateur (dans
-  `~/.claude/settings.json`) prepende `[GENIUS] ...` à chaque prompt **mais
-  uniquement si le flag-file `~/.agentic-workspace/genius-hook-on` existe**.
-  Le hook est silencieux par défaut.
+- **Le skill** vit à `~/.claude/skills/genius/SKILL.md` (source canonique pour
+  cet utilisateur) et est synchronisé avec `shared/skills/genius/SKILL.md` dans
+  ce dépôt. Il est auto-disponible dans toute session `claude` de l'utilisateur,
+  workspace ou pas. `aw new` **ne copie plus** le skill localement.
+- **Le hook** `UserPromptSubmit` dans `~/.claude/settings.json` prepende
+  `[GENIUS] ...` à chaque prompt, sans condition.
 
-Toggle à chaud (pas de redémarrage `claude`) :
-
-```
-/genius-on     # touche le flag, hook actif au prochain prompt
-/genius-off    # supprime le flag, hook silencieux
-```
-
-Le flag est **global à la machine**. Activer dans une session = activer pour
-toutes les sessions `claude` ouvertes.
-
-Le skill `genius-old` au niveau utilisateur (`~/.claude/skills/genius/`) est
-délibérément renommé et marqué `disable-model-invocation: true` pour ne plus
-consommer de tokens de contexte hors workspace. Invocable manuellement via
-`/genius-old`.
+**Edge case sous-agents.** Un sous-agent (`Agent` tool) auto-découvre les
+skills via leur description, mais l'auto-invocation de `genius` n'est pas
+fiable (sa description cible l'investigation, pas tout). Discipline obligatoire :
+quand tu spawn un sous-agent sur une sous-tâche non triviale, inclus dans son
+prompt : *"Avant d'agir, lis et applique `~/.claude/skills/genius/SKILL.md`."*
+Le sous-agent partage le filesystem du parent, ce path résout toujours.
 
 ## Reports
 

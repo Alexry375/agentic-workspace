@@ -92,18 +92,11 @@ cmd_new() {
     echo "Error: procedure source not found at $procedure_src" >&2
     exit 1
   fi
-  local skill_src="$REPO_PATH/shared/skills/genius"
-  if [ ! -d "$skill_src" ]; then
-    echo "Error: skill source not found at $skill_src" >&2
-    exit 1
-  fi
 
   mkdir -p "$target/inputs" "$target/outputs"
   touch "$target/inputs/.gitkeep" "$target/outputs/.gitkeep"
 
   cp "$procedure_src" "$target/CLAUDE.md"
-  mkdir -p "$target/.claude/skills"
-  cp -r "$skill_src" "$target/.claude/skills/genius"
 
   if [ "$is_sub" = "1" ]; then
     : > "$target/inputs/prompt.md"

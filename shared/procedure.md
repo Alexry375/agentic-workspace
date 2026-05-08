@@ -83,8 +83,11 @@ corriger activement.
 
 ## Pendant l'exécution
 
-- **Skill `genius`** : il est chargé automatiquement (`.claude/skills/genius/SKILL.md`).
+- **Skill `genius`** : actif au niveau utilisateur (`~/.claude/skills/genius/SKILL.md`),
+  donc disponible automatiquement dans toute session Claude Code de cet utilisateur.
   Applique-le sur toute affirmation factuelle, hypothèse, et claim de complétion.
+- **Hook `[GENIUS]`** : un `UserPromptSubmit` hook prepende un rappel à chaque
+  prompt — c'est normal, traite-le comme un renforcement du skill.
 - **`inputs/` est en lecture seule.** Si tu dois travailler sur une copie, copie
   vers `outputs/work/`.
 - **Hold-out obligatoire** : si tu itères ton code jusqu'à ce qu'il passe sur un
@@ -103,10 +106,14 @@ Deux patterns selon la nature de la sous-tâche :
 ### Pattern A — Agent tool (intra-workspace)
 
 Pour Explore, Plan, recherche, audit, sous-problème de la tâche en cours :
-utilise le tool `Agent`. Tu peux pré-charger un skill dans le sub-agent via
-le frontmatter `skills: [genius]` d'une définition d'agent dans
-`.claude/agents/<name>.md`. Le sub-agent retourne un **résumé structuré** que
-tu intègres à ton contexte — c'est ta compaction implicite.
+utilise le tool `Agent`. Le sub-agent retourne un **résumé structuré** que tu
+intègres à ton contexte — c'est ta compaction implicite.
+
+**Discipline genius pour les sous-agents.** Les sous-agents auto-découvrent les
+skills par leur description, mais l'auto-invocation de `genius` est aléatoire.
+Sur toute sous-tâche non triviale (investigation, hypothèses, claim de
+complétion), inclus explicitement dans le prompt du sous-agent :
+*"Avant d'agir, lis et applique `~/.claude/skills/genius/SKILL.md`."*
 
 **Analyses indépendantes** (par item, par marché, par document) → un seul
 message avec N `Agent` calls en parallèle.
