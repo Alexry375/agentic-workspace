@@ -1,0 +1,156 @@
+# agentic-workspace — brief pour Claude Code
+
+> Tu es un agent Claude Code qui va utiliser ou modifier `agentic-workspace`.
+> Lis tout. C'est plus dense et plus à jour que le README.
+
+## En une phrase
+
+`agentic-workspace` est un template minimaliste de workspaces pour Claude Code.
+Une CLI (`aw`) crée des workspaces auto-suffisants à partir d'une procédure
+canonique. Chaque brick (skill, hook, instruction) doit gagner sa place :
+biais vers la **soustraction**, pas l'accumulation.
+
+## Architecture
+
+```
+<repo>/                              ← côté dev, source canonique
+├── bin/aw                           ← CLI (new / report / list / context / help)
+├── install.sh                       ← wizard, écrit ~/.agentic-workspace/config.json
+├── shared/
+│   ├── procedure.md                 ← workspace top-level (inlinée par aw new)
+│   ├── procedure-sub.md             ← sub-workspace (inlinée par aw new --sub)
+│   ├── agent-brief.md               ← CE FICHIER, sorti par aw context
+│   └── skills/genius/SKILL.md       ← skill copié dans chaque workspace
+├── .claude/
+│   ├── skills/genius -> ../../shared/skills/genius   (symlink, méta-repo)
+│   └── commands/{genius-on,genius-off}.md
+└── README.md, LICENSE
+
+~/.agentic-workspace/                ← état per-machine
+├── config.json                      {repo_path, reports_path}
+├── reports.jsonl                    append-only bilans
+└── genius-hook-on                   flag-file (présent ⇒ hook actif)
+
+$PWD/workspaces/<name>/              ← créé n'importe où par aw new
+├── CLAUDE.md                        procedure inlinée (pas d'@import)
+├── .claude/skills/genius/SKILL.md   copie locale
+├── inputs/                          contenu utilisateur / spec
+└── outputs/                         livrables de l'agent
+```
+
+**Invariant clé** : un workspace est self-contained. Déplacer ou supprimer le
+dépôt cloné ne casse aucun workspace existant. Le dépôt n'est requis qu'au
+moment du `aw new`.
+
+## Les commandes (toutes lisibles dans `bin/aw`)
+
+| Commande | Effet |
+|---|---|
+| `aw new <name>` | Crée `$PWD/workspaces/<name>/` avec `procedure.md` inlinée. |
+| `aw new <name> --sub` | Sub-workspace : `procedure-sub.md` inlinée + `inputs/prompt.md` vide. |
+| `aw report <name> "<note>"` | Append `{ts,name,note}` dans `reports.jsonl`. Nom libre. |
+| `aw list` | Liste les workspaces dans `$PWD/workspaces/`. |
+| `aw context` | Affiche ce brief. |
+| `aw help` | Aide courte. |
+
+Pas de registre global de workspaces. Ils vivent là où tu les as créés. C'est
+voulu.
+
+## Workspace vs sub-workspace
+
+Le flag `--sub` n'est pas cosmétique, il change la procédure inlinée :
+
+- **Top-level** (`procedure.md`) : aligne avec l'humain via 5 questions au boot,
+  travaille de manière autonome jusqu'à remplir `outputs/`, peut déléguer.
+- **Sub** (`procedure-sub.md`) : lit `inputs/prompt.md` comme spec autoritaire,
+  **pas** de questions à l'humain, **pas** de re-délégation, retour structuré
+  obligatoire dans `outputs/result.md` (Done / Not done / Verification /
+  Adjacent work).
+
+## Délégation : deux patterns, jamais de récursion
+
+- **Pattern A — outil `Agent` intra-session.** Pour une sous-tâche dont tu
+  veux juste le résultat structuré (Explore, Plan, audit, analyse parallèle).
+  Le sous-agent renvoie un résumé, son transcript n'est pas persisté.
+- **Pattern B — `aw new <child> --sub`.** Pour du lourd (>30 min, dépendances
+  distinctes) qui mérite sa propre session. Tu remplis
+  `workspaces/<child>/inputs/prompt.md`, et tu demandes à l'humain de lancer
+  `cd workspaces/<child> && claude`.
+
+**Jamais de `claude -p` récursif.** Coût, perte de visibilité, contrôle bancal.
+
+## Hook & skill « genius »
+
+Deux mécanismes distincts qui ne se télescopent **pas** :
+
+- **Le skill** (`shared/skills/genius/SKILL.md`) est copié dans chaque
+  workspace créé. Il s'auto-charge dès qu'un agent bosse dans le workspace.
+  C'est le mécanisme principal.
+- **Le hook** `UserPromptSubmit` au niveau utilisateur (dans
+  `~/.claude/settings.json`) prepende `[GENIUS] ...` à chaque prompt **mais
+  uniquement si le flag-file `~/.agentic-workspace/genius-hook-on` existe**.
+  Le hook est silencieux par défaut.
+
+Toggle à chaud (pas de redémarrage `claude`) :
+
+```
+/genius-on     # touche le flag, hook actif au prochain prompt
+/genius-off    # supprime le flag, hook silencieux
+```
+
+Le flag est **global à la machine**. Activer dans une session = activer pour
+toutes les sessions `claude` ouvertes.
+
+Le skill `genius-old` au niveau utilisateur (`~/.claude/skills/genius/`) est
+délibérément renommé et marqué `disable-model-invocation: true` pour ne plus
+consommer de tokens de contexte hors workspace. Invocable manuellement via
+`/genius-old`.
+
+## Reports
+
+`aw report <name> "<note>"` ajoute une ligne JSON
+`{ts, name, note}` à `~/.agentic-workspace/reports.jsonl`.
+
+- `name` est **libre**, pas de validation, pas de foreign key vers un
+  workspace existant. C'est un tag.
+- La convention de note : commencer par `ok`, `ko` ou `partial`, puis du texte
+  libre. Exemple : `aw report nexus "ok — déployé sans intervention"`.
+- Objectif : nourrir un corpus qui drive les futures rondes de pruning.
+
+## Méthode (à respecter si tu modifies le dépôt)
+
+- **Brick admission rule** : un candidat brick ne rentre dans
+  `procedure.md` qu'avec ≥3 occurrences observées dans des prompts réels.
+  2 = candidat. 1 = noté, pas embarqué.
+- **Soustraction par défaut** : si un brick ne se défend pas après 1-2
+  sessions d'usage, il dégage.
+- **Pas de duplication source-de-vérité** : le skill `genius` vit dans
+  `shared/skills/genius/`, le `.claude/skills/genius/` du méta-repo est un
+  symlink dessus.
+- **Pas de chemin hardcodé** dans les workspaces. Tout passe par le mécanisme
+  d'inline au moment de `aw new`.
+
+## Backlog conceptuel (non urgent)
+
+1. Valider V2 sur une vraie tâche (collecter `aw report`, voir si le corpus
+   produit du signal).
+2. Auto-capture des prompts depuis `~/.claude/projects/*.jsonl` post-session.
+3. Survey des templates Claude Code publics (notamment le pattern
+   `thoughts/ledgers/` qui survit à `/clear`).
+4. Re-prune à n=20, n=50, n=100 reports.
+
+## Référentiels prior art (pas des dépendances)
+
+- `humanlayer/12-factor-agents` — principes de design d'agents
+- `princeton-nlp/SWE-agent` — task-loop / scaffolding
+- `MineDojo/Voyager` — skill library long-horizon
+- `nus-apr/auto-code-rover` — pipeline de réparation de code
+- `stanfordnlp/dspy` — programmation de prompts (compilation)
+- `obra/superpowers` — collection communautaire de skills Claude Code
+
+## Si tu cherches plus de profondeur
+
+- Lire **`shared/procedure.md`** et **`shared/procedure-sub.md`** : c'est ce
+  que voient tes futurs agents dans leur `CLAUDE.md`.
+- Lire **`bin/aw`** : ~180 lignes de bash, pas de magie cachée.
+- `git log --oneline` : V0 → V1 → V1.1 → V2, l'évolution est traçable.

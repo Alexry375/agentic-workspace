@@ -5,6 +5,7 @@
 #   aw new <name> [--sub]       Create a new workspace at $PWD/workspaces/<name>/
 #   aw report <name> "<note>"   Append a JSONL bilan to ~/.agentic-workspace/reports.jsonl
 #   aw list                     List workspaces in $PWD/workspaces/
+#   aw context                  Print a dense brief for a Claude Code agent
 #   aw help                     Show this help
 #
 # To launch Claude in a workspace:
@@ -46,6 +47,7 @@ Usage:
   aw report <name> "<note>"   Append a bilan to ~/.agentic-workspace/reports.jsonl
                               Note prefix convention: ok|ko|partial — free text after
   aw list                     List workspaces in \$PWD/workspaces/
+  aw context                  Print a dense brief for a Claude Code agent
   aw help                     Show this help
 
 To launch Claude in a workspace:
@@ -137,6 +139,16 @@ cmd_report() {
   echo "Appended report for '$name' to $REPORTS_PATH"
 }
 
+cmd_context() {
+  load_config
+  local brief="$REPO_PATH/shared/agent-brief.md"
+  if [ ! -f "$brief" ]; then
+    echo "Error: brief not found at $brief" >&2
+    exit 1
+  fi
+  cat "$brief"
+}
+
 cmd_list() {
   local dir="$PWD/workspaces"
   if [ ! -d "$dir" ] || [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then
@@ -171,6 +183,7 @@ case "$subcommand" in
   new)            cmd_new "$@" ;;
   report)         cmd_report "$@" ;;
   list)           cmd_list "$@" ;;
+  context)        cmd_context "$@" ;;
   help|-h|--help) cmd_help ;;
   *)
     echo "Unknown subcommand: $subcommand" >&2
