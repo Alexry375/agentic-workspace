@@ -1,6 +1,9 @@
 # Personal identity file — copy IDENTITY.example.md to IDENTITY.md and fill it locally.
 IDENTITY.md
 
+# Personal onboarding overlay — machine-specific context for a fresh Claude Code session.
+ONBOARDING.local.md
+
 # Workspaces created by bin/create-work — never committed
 workspaces/
 
