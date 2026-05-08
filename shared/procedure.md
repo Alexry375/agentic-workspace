@@ -1,4 +1,76 @@
-# Procédure commune
+# Workspace classique
+
+> **Tu es Claude Code lancé dans un workspace.** Un humain a déposé du contenu
+> dans `inputs/`. Tu lis `inputs/`, tu fais la tâche, tu écris le résultat
+> dans `outputs/`.
+
+## Boot de session
+
+1. Lis `IDENTITY.md` (à la racine du workspace ou du repo parent).
+2. Lis l'intégralité de `inputs/`.
+3. Si la demande de l'humain a été énoncée par message après le lancement,
+   traite-la comme un input supplémentaire.
+4. **Si `inputs/prompt.md` existe** : il a été préparé par un autre agent
+   pour toi. Considère-le comme la spec autoritaire de la tâche — la plupart
+   des questions d'alignement ci-dessous (§2) sont déjà répondues par ce
+   fichier.
+
+## La Procédure (5 exigences, en une seule réponse)
+
+Avant de commencer à coder, traite ces 5 points en une seule réponse.
+
+### 1. Niveau de l'humain dans le domaine
+
+Lis `IDENTITY.md` et énonce en 1 ligne le niveau pertinent
+(*ex: "L'humain n'a quasiment pas codé sans IA mais a livré en prod ;
+j'expliquerai mes choix d'archi sans assumer qu'il lit le code."*).
+Si `IDENTITY.md` ne couvre pas le domaine de la tâche, considère cette
+absence comme une question candidate pour §2.
+
+### 2. Alignement par questions ciblées à t=0
+
+**Default : autonomie totale après cet alignement.** Toutes tes questions
+sont posées maintenant, en 0 à 3 messages. Tout ce qui suit suppose que tu
+ne reviendras plus vers l'humain.
+
+Une question ne se justifie que si :
+- elle empêche un choix irréversible que tu ne sauras pas trancher seul,
+- ou tu risques sinon de partir sur la mauvaise cible.
+
+**Exception rare — mode mixte autorisé** : si tes questions amont révèlent
+un humain qui ne se projette pas suffisamment pour décrire son besoin
+(typiquement : application web + humain très exigeant sur l'UI mais
+incapable de la décrire avant de la voir), tu peux planifier 2-3
+checkpoints humains *explicites*, énoncés à l'avance comme des prompts
+précis (*"Je reviendrai vers toi quand A et B seront faits, pour valider C"*).
+Cette exception est marginale — la **grande majorité** des projets sont
+compatibles avec l'autonomie totale.
+
+### 3. Marge d'initiative
+
+Selon `IDENTITY.md` + qualité de la spec dans `inputs/`. Range : **élevée**
+(l'humain ne lit pas le code, je décide tout) → **basse** (je propose 2-3
+options sur les choix d'archi, l'humain tranche). Énonce le verdict.
+
+### 4. Qualité de code exigée
+
+Range : **prototype jetable** → **prod-ready avec tests + observabilité**.
+Par défaut : prod-ready si l'humain a mentionné déploiement / utilisateurs
+/ argent ; prototype sinon. Énonce le verdict.
+
+### 5. Critères d'optimisation à maximiser
+
+Le **vrai** objectif derrière la tâche, pas la formulation littérale.
+Exemples :
+- *"Site web pour vendre"* → **conversion** (pas "site beau")
+- *"App pour utiliser au club"* → **fiabilité usage live** (pas
+  "app riche en features")
+- *"Bot de trading"* → **PnL net après coûts** (pas "stratégie sophistiquée")
+
+Si non évident depuis `inputs/` + `IDENTITY.md` : compte parmi les questions
+de §2.
+
+---
 
 ## Avant d'attaquer
 
@@ -21,7 +93,7 @@ corriger activement.
 - **Vérifier un sub-agent** : lis ses fichiers de sortie, pas son résumé.
   (Pattern B uniquement : son transcript est aussi dans
   `.claude/projects/<session>.jsonl`.)
-- **Processus longs (>30s)** : `run_in_background` + monitor logs. Détecter les
+- **Processus longs (>30 s)** : `run_in_background` + monitor logs. Détecter les
   hang, jamais d'attente passive.
 
 ## Sous-tâches
@@ -39,19 +111,22 @@ tu intègres à ton contexte — c'est ta compaction implicite.
 **Analyses indépendantes** (par item, par marché, par document) → un seul
 message avec N `Agent` calls en parallèle.
 
-### Pattern B — Workspace dédié pour l'humain (sous-tâche lourde)
+### Pattern B — Sub-workspace dédié pour l'humain (sous-tâche lourde)
 
 Si une sous-tâche mérite vraiment sa propre session Claude Code complète
 (état très isolé, plusieurs dizaines de minutes de travail, dépendances
 distinctes), **ne pas tenter de la lancer toi-même** (pas de `claude -p`,
 pas de récursion). À la place :
 
-1. Crée un sous-dossier `workspaces/<name>/` à partir du `template/` du repo.
-2. Dépose dans `workspaces/<name>/inputs/prompt.md` un prompt clair et
+1. Crée le sub-workspace : `aw new <name> --sub`. Cela génère
+   `workspaces/<name>/` avec le `CLAUDE.md` adapté à un sub-workspace
+   (procédure bornée, pas de questions humain) et un `inputs/prompt.md`
+   vide à remplir.
+2. Remplis `workspaces/<name>/inputs/prompt.md` avec un prompt clair et
    complet : objectif, contexte minimal, critères de succès, contraintes.
-3. Indique à l'humain dans ta réponse : *"J'ai préparé un workspace dédié
-   à cette sous-tâche. Lance `cd workspaces/<name> && claude` quand tu peux,
-   le prompt est dans `inputs/prompt.md`."*
+3. Indique à l'humain dans ta réponse : *"J'ai préparé un sub-workspace
+   dédié à cette sous-tâche. Lance `cd workspaces/<name> && claude` quand
+   tu peux, le prompt est dans `inputs/prompt.md`."*
 
 L'humain reste dans la boucle pour ces cas lourds, mais le coût est minime
 (juste lancer une commande). Le nouvel agent verra le prompt préparé et
@@ -109,10 +184,23 @@ Toujours présent à la fin :
 
 Une seule fois, écris une question dans `outputs/blocked.md` avec :
 
-- ce que tu as déjà essayé
-- ce qui te manque pour continuer
-- 2-3 options possibles avec leur conséquence
+- ce que tu as déjà essayé,
+- ce qui te manque pour continuer,
+- 2-3 options possibles avec leur conséquence.
 
 Puis termine. **Ne brute-force pas** après deux tentatives ratées sur le
 même sous-problème — lance plutôt un `Agent` d'analyse parallèle, ou pose
 une question de fond. C'est du cadrage, pas de l'effort.
+
+## Bilan en fin de tâche
+
+Quand la tâche est terminée (ou bloquée), produis un bilan court via :
+
+```bash
+aw report <name> "ok|ko|partial — note libre sur succès / échec / suite"
+```
+
+Le bilan est appendé à `~/.agentic-workspace/reports.jsonl` (corpus
+d'amélioration du harness, pas de retrouve par workspace). Format :
+free-form pour le texte, mais commence par un mot clé d'outcome
+(`ok` / `ko` / `partial`) pour faciliter le tri ultérieur.

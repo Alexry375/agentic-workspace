@@ -2,96 +2,163 @@
 # aw — agentic-workspace CLI
 #
 # Usage:
-#   aw new <name>    Create a new workspace from template/
-#   aw list          List existing workspaces
-#   aw help          Show this help
+#   aw new <name> [--sub]       Create a new workspace at $PWD/workspaces/<name>/
+#   aw report <name> "<note>"   Append a JSONL bilan to ~/.agentic-workspace/reports.jsonl
+#   aw list                     List workspaces in $PWD/workspaces/
+#   aw help                     Show this help
 #
-# To launch Claude in a workspace, cd into it yourself:
-#   cd workspaces/<name> && claude          # (or claude --continue, etc.)
+# To launch Claude in a workspace:
+#   cd workspaces/<name> && claude
 #
-# The repo root is detected from this script's location.
+# Config is read from ~/.agentic-workspace/config.json, populated by install.sh.
 
 set -euo pipefail
 
-# Resolve repo root (parent of bin/)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-TEMPLATE_DIR="$REPO_ROOT/template"
-WORKSPACES_DIR="$REPO_ROOT/workspaces"
+CONFIG_DIR="$HOME/.agentic-workspace"
+CONFIG_FILE="$CONFIG_DIR/config.json"
+
+# --- Config loading ---------------------------------------------------------
+
+load_config() {
+  if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Error: no config at $CONFIG_FILE." >&2
+    echo "Run install.sh from the agentic-workspace repo to create it." >&2
+    exit 1
+  fi
+  REPO_PATH="$(jq -r '.repo_path' "$CONFIG_FILE")"
+  REPORTS_PATH="$(jq -r '.reports_path' "$CONFIG_FILE")"
+  if [ -z "$REPO_PATH" ] || [ ! -d "$REPO_PATH" ]; then
+    echo "Error: repo_path '$REPO_PATH' from $CONFIG_FILE is invalid." >&2
+    echo "Re-run install.sh from the current location of the repo." >&2
+    exit 1
+  fi
+}
+
+# --- Subcommands ------------------------------------------------------------
 
 cmd_help() {
   cat <<EOF
 aw — agentic-workspace CLI
 
 Usage:
-  aw new <name>    Create a new workspace at workspaces/<name>/ from template/
-  aw list          List existing workspaces
-  aw help          Show this help
+  aw new <name> [--sub]       Create a workspace at \$PWD/workspaces/<name>/
+                              --sub: sub-workspace (bounded scope, no human in the loop)
+  aw report <name> "<note>"   Append a bilan to ~/.agentic-workspace/reports.jsonl
+                              Note prefix convention: ok|ko|partial — free text after
+  aw list                     List workspaces in \$PWD/workspaces/
+  aw help                     Show this help
 
-To launch Claude in a workspace, cd into it yourself:
-  cd $WORKSPACES_DIR/<name> && claude          # (or claude --continue, etc.)
+To launch Claude in a workspace:
+  cd workspaces/<name> && claude
 
-Repo root: $REPO_ROOT
+Config: $CONFIG_FILE
 EOF
 }
 
 cmd_new() {
   if [ $# -lt 1 ]; then
     echo "Error: missing workspace name." >&2
-    echo "Usage: aw new <name>" >&2
+    echo "Usage: aw new <name> [--sub]" >&2
     exit 1
   fi
   local name="$1"
-  local target="$WORKSPACES_DIR/$name"
+  shift
+  local is_sub=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --sub) is_sub=1 ;;
+      *) echo "Error: unknown option '$1'." >&2; exit 1 ;;
+    esac
+    shift
+  done
 
+  load_config
+
+  local target="$PWD/workspaces/$name"
   if [ -e "$target" ]; then
     echo "Error: workspace '$name' already exists at $target" >&2
     exit 1
   fi
 
-  if [ ! -d "$TEMPLATE_DIR" ]; then
-    echo "Error: template/ not found at $TEMPLATE_DIR" >&2
+  local procedure_src
+  if [ "$is_sub" = "1" ]; then
+    procedure_src="$REPO_PATH/shared/procedure-sub.md"
+  else
+    procedure_src="$REPO_PATH/shared/procedure.md"
+  fi
+  if [ ! -f "$procedure_src" ]; then
+    echo "Error: procedure source not found at $procedure_src" >&2
+    exit 1
+  fi
+  local skill_src="$REPO_PATH/shared/skills/genius"
+  if [ ! -d "$skill_src" ]; then
+    echo "Error: skill source not found at $skill_src" >&2
     exit 1
   fi
 
-  mkdir -p "$WORKSPACES_DIR"
-  cp -r "$TEMPLATE_DIR" "$target"
+  mkdir -p "$target/inputs" "$target/outputs"
+  touch "$target/inputs/.gitkeep" "$target/outputs/.gitkeep"
 
-  # Adjust the @import path inside the copied CLAUDE.md so it still
-  # resolves to <repo>/shared/procedure.md (now two levels up instead of one).
-  if [ -f "$target/CLAUDE.md" ]; then
-    sed -i.bak 's|@\.\./shared/procedure\.md|@../../shared/procedure.md|g' \
-      "$target/CLAUDE.md" && rm -f "$target/CLAUDE.md.bak"
+  cp "$procedure_src" "$target/CLAUDE.md"
+  mkdir -p "$target/.claude/skills"
+  cp -r "$skill_src" "$target/.claude/skills/genius"
+
+  if [ "$is_sub" = "1" ]; then
+    : > "$target/inputs/prompt.md"
   fi
 
   echo "Created workspace: $target"
-  echo "Next:"
-  echo "  - drop content into $target/inputs/"
-  echo "  - cd $target && claude"
+  if [ "$is_sub" = "1" ]; then
+    echo "  type: sub-workspace"
+    echo "  next: fill $target/inputs/prompt.md, then run:"
+  else
+    echo "  type: workspace"
+    echo "  next: drop content into $target/inputs/, then run:"
+  fi
+  echo "    cd $target && claude"
+}
+
+cmd_report() {
+  if [ $# -lt 2 ]; then
+    echo "Error: missing arguments." >&2
+    echo "Usage: aw report <name> \"<note>\"" >&2
+    exit 1
+  fi
+  local name="$1"
+  local note="$2"
+
+  load_config
+
+  local ts
+  ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  mkdir -p "$(dirname "$REPORTS_PATH")"
+  jq -nc --arg ts "$ts" --arg name "$name" --arg note "$note" \
+    '{ts: $ts, name: $name, note: $note}' >> "$REPORTS_PATH"
+  echo "Appended report for '$name' to $REPORTS_PATH"
 }
 
 cmd_list() {
-  if [ ! -d "$WORKSPACES_DIR" ] || [ -z "$(ls -A "$WORKSPACES_DIR" 2>/dev/null)" ]; then
-    echo "No workspaces yet."
+  local dir="$PWD/workspaces"
+  if [ ! -d "$dir" ] || [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then
+    echo "No workspaces in $dir."
     echo "Create one with: aw new <name>"
     return 0
   fi
 
   printf "%-30s %-12s %-20s\n" "NAME" "INPUTS" "LAST MODIFIED"
   printf "%-30s %-12s %-20s\n" "----" "------" "-------------"
-  for dir in "$WORKSPACES_DIR"/*/; do
-    [ -d "$dir" ] || continue
-    local name
-    name="$(basename "$dir")"
-    local input_count
-    input_count="$(find "$dir/inputs" -mindepth 1 -not -name '.gitkeep' 2>/dev/null | wc -l)"
-    local mtime
-    mtime="$(date -r "$dir" '+%Y-%m-%d %H:%M' 2>/dev/null || echo '?')"
+  local d name input_count mtime
+  for d in "$dir"/*/; do
+    [ -d "$d" ] || continue
+    name="$(basename "$d")"
+    input_count="$(find "$d/inputs" -mindepth 1 -not -name '.gitkeep' 2>/dev/null | wc -l)"
+    mtime="$(date -r "$d" '+%Y-%m-%d %H:%M' 2>/dev/null || echo '?')"
     printf "%-30s %-12s %-20s\n" "$name" "$input_count files" "$mtime"
   done
 }
 
-# Dispatch
+# --- Dispatch ---------------------------------------------------------------
+
 if [ $# -eq 0 ]; then
   cmd_help
   exit 0
@@ -101,8 +168,9 @@ subcommand="$1"
 shift
 
 case "$subcommand" in
-  new)   cmd_new "$@" ;;
-  list)  cmd_list "$@" ;;
+  new)            cmd_new "$@" ;;
+  report)         cmd_report "$@" ;;
+  list)           cmd_list "$@" ;;
   help|-h|--help) cmd_help ;;
   *)
     echo "Unknown subcommand: $subcommand" >&2

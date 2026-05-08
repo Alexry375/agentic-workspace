@@ -4,7 +4,8 @@ IDENTITY.md
 # Personal onboarding overlay — machine-specific context for a fresh Claude Code session.
 ONBOARDING.local.md
 
-# Workspaces created by bin/create-work — never committed
+# Workspaces created by `aw new` live under $PWD/workspaces/ wherever invoked.
+# Defensive guard in case one is created at the repo root.
 workspaces/
 
 # OS / editor artifacts
