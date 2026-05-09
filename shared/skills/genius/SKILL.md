@@ -1,6 +1,6 @@
 ---
 name: genius
-description: "Use when investigating bugs, making architectural decisions, or claiming behavior of existing code. Verify before probabilizing. Skip trivial L1 lookups."
+description: "Use before ANY action on a problem, bug, feature, or technical decision. Classify, hypothesize, then act. No exceptions."
 ---
 
 # Genius
