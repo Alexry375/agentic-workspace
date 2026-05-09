@@ -211,3 +211,9 @@ Le bilan est appendé à `~/.agentic-workspace/reports.jsonl` (corpus
 d'amélioration du harness, pas de retrouve par workspace). Format :
 free-form pour le texte, mais commence par un mot clé d'outcome
 (`ok` / `ko` / `partial`) pour faciliter le tri ultérieur.
+
+Si l'humain confirme que le workspace est terminé et n'a plus à être
+relancé, propose-lui `aw archive <name>` (touch `workspaces/<name>/.archive`).
+Le dossier n'est pas renommé — seul un flag-file est posé. Toute énumération
+ultérieure via `aw list` ignorera ce workspace par défaut. Pour le réveiller :
+`aw revive <name>`.

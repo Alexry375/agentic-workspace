@@ -4,7 +4,9 @@
 # Usage:
 #   aw new <name> [--sub]       Create a new workspace at $PWD/workspaces/<name>/
 #   aw report <name> "<note>"   Append a JSONL bilan to ~/.agentic-workspace/reports.jsonl
-#   aw list                     List workspaces in $PWD/workspaces/
+#   aw archive <name>           Touch workspaces/<name>/.archive (mark as done)
+#   aw revive <name>            Remove workspaces/<name>/.archive (mark as live)
+#   aw list [--all|--archived]  List live workspaces by default
 #   aw context                  Print a dense brief for a Claude Code agent
 #   aw help                     Show this help
 #
@@ -46,9 +48,16 @@ Usage:
                               --sub: sub-workspace (bounded scope, no human in the loop)
   aw report <name> "<note>"   Append a bilan to ~/.agentic-workspace/reports.jsonl
                               Note prefix convention: ok|ko|partial — free text after
-  aw list                     List workspaces in \$PWD/workspaces/
+  aw archive <name>           Mark workspace as done (touches .archive flag)
+  aw revive <name>             Unmark workspace (removes .archive flag)
+  aw list [--all|--archived]  List live workspaces by default
+                              --all: include archived (with STATUS column)
+                              --archived: only archived
   aw context                  Print a dense brief for a Claude Code agent
   aw help                     Show this help
+
+To check archive state of a workspace from a script:
+  [ -f \$PWD/workspaces/<name>/.archive ] && echo archived || echo live
 
 To launch Claude in a workspace:
   cd workspaces/<name> && claude
@@ -142,7 +151,47 @@ cmd_context() {
   cat "$brief"
 }
 
+cmd_archive() {
+  if [ $# -lt 1 ]; then
+    echo "Error: missing workspace name." >&2
+    echo "Usage: aw archive <name>" >&2
+    exit 1
+  fi
+  local target="$PWD/workspaces/$1"
+  if [ ! -d "$target" ]; then
+    echo "Error: no workspace at $target" >&2
+    exit 1
+  fi
+  touch "$target/.archive"
+  echo "Archived: $target"
+}
+
+cmd_revive() {
+  if [ $# -lt 1 ]; then
+    echo "Error: missing workspace name." >&2
+    echo "Usage: aw revive <name>" >&2
+    exit 1
+  fi
+  local target="$PWD/workspaces/$1"
+  if [ ! -d "$target" ]; then
+    echo "Error: no workspace at $target" >&2
+    exit 1
+  fi
+  rm -f "$target/.archive"
+  echo "Revived: $target"
+}
+
 cmd_list() {
+  local mode=live
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --all)      mode=all ;;
+      --archived) mode=archived ;;
+      *) echo "Error: unknown option '$1'." >&2; exit 1 ;;
+    esac
+    shift
+  done
+
   local dir="$PWD/workspaces"
   if [ ! -d "$dir" ] || [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then
     echo "No workspaces in $dir."
@@ -150,15 +199,34 @@ cmd_list() {
     return 0
   fi
 
-  printf "%-30s %-12s %-20s\n" "NAME" "INPUTS" "LAST MODIFIED"
-  printf "%-30s %-12s %-20s\n" "----" "------" "-------------"
-  local d name input_count mtime
+  if [ "$mode" = "all" ]; then
+    printf "%-25s %-10s %-10s %-16s\n" "NAME" "STATUS" "INPUTS" "LAST MODIFIED"
+    printf "%-25s %-10s %-10s %-16s\n" "----" "------" "------" "-------------"
+  else
+    printf "%-25s %-10s %-16s\n" "NAME" "INPUTS" "LAST MODIFIED"
+    printf "%-25s %-10s %-16s\n" "----" "------" "-------------"
+  fi
+
+  local d name input_count mtime status
   for d in "$dir"/*/; do
     [ -d "$d" ] || continue
     name="$(basename "$d")"
+    if [ -f "$d/.archive" ]; then
+      status=archived
+    else
+      status=live
+    fi
+    case "$mode" in
+      live)     [ "$status" = "live" ] || continue ;;
+      archived) [ "$status" = "archived" ] || continue ;;
+    esac
     input_count="$(find "$d/inputs" -mindepth 1 -not -name '.gitkeep' 2>/dev/null | wc -l)"
     mtime="$(date -r "$d" '+%Y-%m-%d %H:%M' 2>/dev/null || echo '?')"
-    printf "%-30s %-12s %-20s\n" "$name" "$input_count files" "$mtime"
+    if [ "$mode" = "all" ]; then
+      printf "%-25s %-10s %-10s %-16s\n" "$name" "$status" "$input_count files" "$mtime"
+    else
+      printf "%-25s %-10s %-16s\n" "$name" "$input_count files" "$mtime"
+    fi
   done
 }
 
@@ -175,6 +243,8 @@ shift
 case "$subcommand" in
   new)            cmd_new "$@" ;;
   report)         cmd_report "$@" ;;
+  archive)        cmd_archive "$@" ;;
+  revive)         cmd_revive "$@" ;;
   list)           cmd_list "$@" ;;
   context)        cmd_context "$@" ;;
   help|-h|--help) cmd_help ;;

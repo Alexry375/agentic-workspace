@@ -49,12 +49,34 @@ donc le workspace présume un setup `~/.claude/skills/genius/` actif.
 | `aw new <name>` | Crée `$PWD/workspaces/<name>/` avec `procedure.md` inlinée. |
 | `aw new <name> --sub` | Sub-workspace : `procedure-sub.md` inlinée + `inputs/prompt.md` vide. |
 | `aw report <name> "<note>"` | Append `{ts,name,note}` dans `reports.jsonl`. Nom libre. |
-| `aw list` | Liste les workspaces dans `$PWD/workspaces/`. |
+| `aw archive <name>` | Marque le workspace comme terminé (touch `.archive`). |
+| `aw revive <name>` | Annule l'archivage (rm `.archive`). |
+| `aw list` | Liste les workspaces **vivants seulement** (par défaut). |
+| `aw list --all` | Tout, avec colonne STATUS (live/archived). |
+| `aw list --archived` | Seulement les archivés. |
 | `aw context` | Affiche ce brief. |
 | `aw help` | Aide courte. |
 
 Pas de registre global de workspaces. Ils vivent là où tu les as créés. C'est
 voulu.
+
+## État d'un workspace : la convention `.archive`
+
+Pour savoir si un workspace est encore d'actualité, **regarde si le fichier
+`.archive` existe à sa racine**. C'est la seule source de vérité :
+
+```bash
+[ -f workspaces/<name>/.archive ] && echo archived || echo live
+```
+
+- Présent ⇒ archivé (humain a confirmé que c'est terminé / plus utile).
+- Absent ⇒ vivant.
+
+Le nom du dossier ne change **jamais** (sinon l'historique de session Claude
+Code à `~/.claude/projects/<chemin-encodé>/` se retrouve orphelin). Le flag
+`.archive` est la seule mutation. Pour énumérer ce qui est encore actif :
+**utilise `aw list`, pas `ls workspaces/`** — `aw list` filtre les archivés
+par défaut, `ls` n'a aucun signal.
 
 ## Workspace vs sub-workspace
 

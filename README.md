@@ -72,10 +72,29 @@ Appends a JSON line to `~/.agentic-workspace/reports.jsonl`. The report is **dec
 ### List workspaces in the current directory
 
 ```bash
-aw list
+aw list                  # live workspaces only (default)
+aw list --all            # everything, with STATUS column (live/archived)
+aw list --archived       # only archived
 ```
 
 There is no global registry — workspaces live under `$PWD/workspaces/` wherever you ran `aw new`. By design.
+
+### Archive a workspace once you're done with it
+
+```bash
+aw archive my-project    # touch workspaces/my-project/.archive
+aw revive  my-project    # rm  workspaces/my-project/.archive
+```
+
+The folder name never changes — only a `.archive` flag file is added inside the workspace. This is deliberate: renaming or moving the workspace would orphan its Claude Code session history (which is keyed by absolute path under `~/.claude/projects/`).
+
+**To check archive state from a script or agent:**
+
+```bash
+[ -f workspaces/<name>/.archive ] && echo archived || echo live
+```
+
+That's the single source of truth. `aw list` filters by default so agents that use it never see hundreds of dormant workspaces.
 
 ## The `genius` skill and hook
 
