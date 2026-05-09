@@ -10,8 +10,7 @@ agentic-workspace/
 │   ├── procedure.md                    # workspace top-level procedure (inlined into CLAUDE.md)
 │   ├── procedure-sub.md                # sub-workspace procedure (inlined when --sub)
 │   ├── agent-brief.md                  # dense brief printed by `aw context`
-│   └── skills/genius/SKILL.md          # cognitive discipline skill (synced with ~/.claude/)
-├── .claude/skills/genius -> ../../shared/skills/genius   # symlink, meta-repo coverage
+│   └── skills/genius/SKILL.md          # canonical skill, sync target for ~/.claude/skills/genius/
 ├── IDENTITY.example.md                 # copy to IDENTITY.md and fill (gitignored)
 ├── ONBOARDING.md                       # context handoff for a fresh session on this repo
 ├── README.md

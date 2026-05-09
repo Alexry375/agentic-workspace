@@ -20,8 +20,7 @@ biais vers la **soustraction**, pas l'accumulation.
 │   ├── procedure.md                 ← workspace top-level (inlinée par aw new)
 │   ├── procedure-sub.md             ← sub-workspace (inlinée par aw new --sub)
 │   ├── agent-brief.md               ← CE FICHIER, sorti par aw context
-│   └── skills/genius/SKILL.md       ← skill copié dans chaque workspace
-├── .claude/skills/genius -> ../../shared/skills/genius   (symlink, méta-repo)
+│   └── skills/genius/SKILL.md       ← skill canonique, à synchroniser avec ~/.claude/
 └── README.md, LICENSE
 
 ~/.agentic-workspace/                ← état per-machine
@@ -116,9 +115,10 @@ Le sous-agent partage le filesystem du parent, ce path résout toujours.
   2 = candidat. 1 = noté, pas embarqué.
 - **Soustraction par défaut** : si un brick ne se défend pas après 1-2
   sessions d'usage, il dégage.
-- **Pas de duplication source-de-vérité** : le skill `genius` vit dans
-  `shared/skills/genius/`, le `.claude/skills/genius/` du méta-repo est un
-  symlink dessus.
+- **Pas de duplication source-de-vérité** : le skill `genius` a deux copies
+  (`shared/skills/genius/` dans le repo, `~/.claude/skills/genius/` côté
+  utilisateur). Elles doivent être synchronisées manuellement (cp depuis le
+  repo après modification). C'est le user-level qui est exécuté.
 - **Pas de chemin hardcodé** dans les workspaces. Tout passe par le mécanisme
   d'inline au moment de `aw new`.
 

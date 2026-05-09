@@ -32,10 +32,8 @@ agentic-workspace/
 ├── shared/
 │   ├── procedure.md                    # workspace top-level (inlined into CLAUDE.md)
 │   ├── procedure-sub.md                # sub-workspace (inlined when --sub)
-│   └── skills/genius/SKILL.md          # cognitive discipline skill
-├── .claude/
-│   ├── skills/genius -> ../../shared/skills/genius   # symlink (meta-repo coverage)
-│   └── commands/{genius-on,genius-off}.md
+│   ├── agent-brief.md                  # dense brief, printed by `aw context`
+│   └── skills/genius/SKILL.md          # canonical genius, sync target for ~/.claude/
 ├── IDENTITY.example.md
 ├── ONBOARDING.md, README.md, LICENSE
 ```
@@ -43,13 +41,16 @@ agentic-workspace/
 Per-user state lives in `~/.agentic-workspace/`:
 - `config.json` — `{repo_path, reports_path}` written by install.sh
 - `reports.jsonl` — append-only bilans from `aw report`
-- `genius-hook-on` — flag file (presence ⇒ the user-level UserPromptSubmit hook fires)
 
-Workspaces are created at `$PWD/workspaces/<name>/` by `aw new`. They are
-**self-contained**: each ships its own `CLAUDE.md` (procedure inlined) and
-its own `.claude/skills/genius/SKILL.md`. No `@import`, no runtime
-dependency on the cloned repo's path. Moving or deleting the repo does not
-break existing workspaces.
+The `genius` skill and its `UserPromptSubmit` hook are installed at the user
+level (`~/.claude/skills/genius/` and `~/.claude/settings.json`), both
+unconditional. Workspaces rely on that user-level install — `aw new` does not
+copy the skill locally.
+
+Workspaces are created at `$PWD/workspaces/<name>/` by `aw new`. The
+procedure is **inlined** into `CLAUDE.md` (no `@import`), so moving or
+deleting the cloned repo does not break existing workspaces. The skill is
+the only runtime dependency, sourced from `~/.claude/`.
 
 There is no `template/` folder anymore — its role is taken by `shared/` +
 `bin/aw` generating the workspace at creation time.
@@ -73,15 +74,15 @@ In order:
   dependencies). The parent agent prepares `workspaces/<name>/inputs/prompt.md`
   and asks the human to run `cd workspaces/<name> && claude`. **No
   `claude -p` recursion.**
-- **Skill priority** is `Enterprise > Personal > Project`. A user-level skill
-  with the same `name:` will override a project skill. Renaming the user-level
-  copy (e.g. `genius-old`) breaks the conflict cleanly.
-- **Workspace self-containment**: `aw new` inlines the relevant procedure and
-  copies the skill. End users never see `shared/`. This avoids brittle paths
-  and `@import` resolution.
-- **Hook toggle** via flag file (`~/.agentic-workspace/genius-hook-on`). Off
-  by default. Slash commands `/genius-on` and `/genius-off` toggle at runtime
-  with no restart.
+- **Skill priority** is `Enterprise > Personal > Project`. The `genius` skill
+  lives once at the user level (`~/.claude/skills/genius/`); `shared/skills/`
+  is the canonical sync source, kept in lockstep manually.
+- **Workspace self-containment** (procedure only): `aw new` inlines the
+  relevant procedure into `CLAUDE.md`. End users never see `shared/`. This
+  avoids brittle paths and `@import` resolution. The skill is **not** copied —
+  workspaces rely on the user-level install.
+- **Hook is unconditional**: `~/.claude/settings.json` prepends `[GENIUS] ...`
+  on every prompt. No flag file, no toggle slash commands.
 - **Brick admission rule**: a candidate brick should be backed by **≥3
   occurrences in real prompts** before being added to `shared/procedure.md`.
   2 occurrences = candidate. 1 = noted, not embedded.
