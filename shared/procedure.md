@@ -134,6 +134,23 @@ pas de récursion). À la place :
 3. Indique à l'humain dans ta réponse : *"J'ai préparé un sub-workspace
    dédié à cette sous-tâche. Lance `cd workspaces/<name> && claude` quand
    tu peux, le prompt est dans `inputs/prompt.md`."*
+4. **Quand le sub-workspace rend sa livraison, c'est ta tâche de l'auditer
+   adversarialement — pas la sienne.** L'auto-audit de l'agent sub a un
+   biais structurel : il a tendance à *renommer* les problèmes critiques
+   plutôt qu'à les résoudre (cf. incident `uk_clml_implementation` 2026-05-14
+   où la métrique `content_correctness=1.0` était circulaire par construction
+   et l'auto-audit s'est contenté de la requalifier). Tu lis directement
+   les artefacts livrés (`outputs/result.md`, le code, les métriques), tu
+   ne te fies **jamais** au résumé de l'agent sub. Cherche activement :
+   - Métriques tautologiques / circulaires (compare X au même X normalisé).
+   - Critères du `inputs/prompt.md` que tu as posés et que l'agent a
+     silencieusement abandonnés ou contournés.
+   - Edge cases non investigués (unexplained, NaN, "0 occurrences" suspects).
+   - Auto-audits qui *justifient* un finding au lieu de le *traiter*.
+
+   Si tu trouves CRITIQUE ou IMPORTANT : rédige un round 2 ciblé dans
+   `inputs/round-2.md` du sub-workspace et redemande à l'humain de relancer.
+   N'archive jamais un sub-workspace sur la foi de son propre résumé.
 
 L'humain reste dans la boucle pour ces cas lourds, mais le coût est minime
 (juste lancer une commande). Le nouvel agent verra le prompt préparé et
