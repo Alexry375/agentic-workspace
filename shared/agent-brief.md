@@ -119,6 +119,22 @@ quand tu spawn un sous-agent sur une sous-tâche non triviale, inclus dans son
 prompt : *"Avant d'agir, lis et applique `~/.claude/skills/genius/SKILL.md`."*
 Le sous-agent partage le filesystem du parent, ce path résout toujours.
 
+## Guides opt-in
+
+`shared/guides/` héberge des markdown denses tirés de chantiers passés.
+**Pas auto-chargés** ; tu les lis via `Read` *si* la tâche du workspace
+correspond au trigger ci-dessous. Pas de frontmatter, pas d'auto-découverte
+— l'invitation à charger doit venir d'ici ou de l'humain.
+
+| Guide | Charge si la tâche est |
+|---|---|
+| `shared/guides/reimplementation-parity.md` | ré-implémenter un système existant sur une autre stack / langage / framework, **ou** absorber le cœur d'un repo upstream en l'adaptant à un autre cas d'usage |
+
+Différence avec `shared/skills/` : un *skill* est synchronisé avec
+`~/.claude/skills/` et auto-disponible partout (cf. `genius`) ; un *guide*
+est confiné au repo et opt-in. Pruning ≥3 occurrences observées, comme le
+reste de la méthode.
+
 ## Reports
 
 `aw report <name> "<note>"` ajoute une ligne JSON
