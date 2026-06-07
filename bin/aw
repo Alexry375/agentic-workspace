@@ -1,26 +1,20 @@
 #!/usr/bin/env bash
 # aw — agentic-workspace CLI
 #
-# Usage:
-#   aw new <name> [--sub]       Create a new workspace at $PWD/workspaces/<name>/
-#   aw report <name> "<note>"   Append a JSONL bilan to ~/.agentic-workspace/reports.jsonl
-#   aw archive <name>           Touch workspaces/<name>/.archive (mark as done)
-#   aw revive <name>            Remove workspaces/<name>/.archive (mark as live)
-#   aw list [--all|--archived]  List live workspaces by default
-#   aw context                  Print a dense brief for a Claude Code agent
-#   aw help                     Show this help
+# Flow (post-pivot 2026-06-07) :
+#   1. Session main interactive (chez l'humain) : alignement + `aw new <name>`
+#      + remplit `inputs/prompt.md` complet.
+#   2. Humain lance une session dédiée : `cd workspaces/<name> && claude`.
+#      L'agent appelle `aw start` au boot, bosse, `aw end` à sa dernière action.
+#   3. Main reprend, audit la livraison, appelle `aw report <name> "<note>"`
+#      qui lit les timestamps et écrit le bilan + duration_seconds.
 #
-# To launch Claude in a workspace:
-#   cd workspaces/<name> && claude
-#
-# Config is read from ~/.agentic-workspace/config.json, populated by install.sh.
+# Config : ~/.agentic-workspace/config.json (créé par install.sh).
 
 set -euo pipefail
 
 CONFIG_DIR="$HOME/.agentic-workspace"
 CONFIG_FILE="$CONFIG_DIR/config.json"
-
-# --- Config loading ---------------------------------------------------------
 
 load_config() {
   if [ ! -f "$CONFIG_FILE" ]; then
@@ -37,146 +31,122 @@ load_config() {
   fi
 }
 
-# --- Subcommands ------------------------------------------------------------
-
 cmd_help() {
   cat <<EOF
 aw — agentic-workspace CLI
 
-Usage:
-  aw new <name> [--sub]       Create a workspace at \$PWD/workspaces/<name>/
-                              --sub: sub-workspace (bounded scope, no human in the loop)
-  aw report <name> "<note>"   Append a bilan to ~/.agentic-workspace/reports.jsonl
-                              Note prefix convention: ok|ko|partial — free text after
-  aw archive <name>           Mark workspace as done (touches .archive flag)
-  aw revive <name>             Unmark workspace (removes .archive flag)
-  aw list [--all|--archived]  List live workspaces by default
-                              --all: include archived (with STATUS column)
-                              --archived: only archived
-  aw context                  Print a dense brief for a Claude Code agent
-  aw help                     Show this help
+  aw new <name>                Create \$PWD/workspaces/<name>/ (inputs/prompt.md à remplir)
+  aw start                     [workspace agent] Mark timer start (\$PWD/.started_at)
+  aw end                       [workspace agent] Mark timer end   (\$PWD/.ended_at)
+  aw report <name> "<note>"    [main agent] Append bilan + duration_seconds to reports.jsonl
+                               Note prefix convention: ok|ko|partial — free text after
+  aw archive <name>            Touch .archive (workspace done)
+  aw revive <name>             Remove .archive
+  aw list [--all|--archived]   List live workspaces by default
+  aw context                   Print dense brief for an agent (shared/agent-brief.md)
+  aw help                      This help
 
-To check archive state of a workspace from a script:
-  [ -f \$PWD/workspaces/<name>/.archive ] && echo archived || echo live
-
-To launch Claude in a workspace:
-  cd workspaces/<name> && claude
+Launch in a workspace:    cd workspaces/<name> && claude
+Archive check in script:  [ -f \$PWD/workspaces/<name>/.archive ] && echo archived || echo live
 
 Config: $CONFIG_FILE
 EOF
 }
 
 cmd_new() {
-  if [ $# -lt 1 ]; then
-    echo "Error: missing workspace name." >&2
-    echo "Usage: aw new <name> [--sub]" >&2
-    exit 1
+  if [ $# -ne 1 ]; then
+    echo "Usage: aw new <name>" >&2; exit 1
   fi
-  local name="$1"
-  shift
-  local is_sub=0
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --sub) is_sub=1 ;;
-      *) echo "Error: unknown option '$1'." >&2; exit 1 ;;
-    esac
-    shift
-  done
-
   load_config
-
-  local target="$PWD/workspaces/$name"
+  local name="$1" target="$PWD/workspaces/$1"
   if [ -e "$target" ]; then
-    echo "Error: workspace '$name' already exists at $target" >&2
-    exit 1
+    echo "Error: workspace '$name' already exists at $target" >&2; exit 1
   fi
-
-  local procedure_src
-  if [ "$is_sub" = "1" ]; then
-    procedure_src="$REPO_PATH/shared/procedure-sub.md"
-  else
-    procedure_src="$REPO_PATH/shared/procedure.md"
-  fi
-  if [ ! -f "$procedure_src" ]; then
-    echo "Error: procedure source not found at $procedure_src" >&2
-    exit 1
-  fi
+  local src="$REPO_PATH/shared/procedure.md"
+  [ -f "$src" ] || { echo "Error: $src missing" >&2; exit 1; }
 
   mkdir -p "$target/inputs" "$target/outputs"
-  touch "$target/inputs/.gitkeep" "$target/outputs/.gitkeep"
+  touch "$target/outputs/.gitkeep"
+  : > "$target/inputs/prompt.md"
+  cp "$src" "$target/CLAUDE.md"
 
-  cp "$procedure_src" "$target/CLAUDE.md"
+  echo "Created: $target"
+  echo "Next: fill $target/inputs/prompt.md, then 'cd $target && claude'"
+}
 
-  if [ "$is_sub" = "1" ]; then
-    : > "$target/inputs/prompt.md"
+assert_in_workspace() {
+  if [ ! -d "$PWD/inputs" ] || [ ! -d "$PWD/outputs" ]; then
+    echo "Error: \$PWD does not look like a workspace (missing inputs/ or outputs/)." >&2
+    echo "Cd into the workspace first." >&2
+    exit 1
   fi
+}
 
-  echo "Created workspace: $target"
-  if [ "$is_sub" = "1" ]; then
-    echo "  type: sub-workspace"
-    echo "  next: fill $target/inputs/prompt.md, then run:"
-  else
-    echo "  type: workspace"
-    echo "  next: drop content into $target/inputs/, then run:"
-  fi
-  echo "    cd $target && claude"
+cmd_start() {
+  [ $# -eq 0 ] || { echo "Usage: aw start (no args, from inside workspace)" >&2; exit 1; }
+  assert_in_workspace
+  date -u +%s > "$PWD/.started_at"
+  echo "Timer started ($(date -u))"
+}
+
+cmd_end() {
+  [ $# -eq 0 ] || { echo "Usage: aw end (no args, from inside workspace)" >&2; exit 1; }
+  assert_in_workspace
+  date -u +%s > "$PWD/.ended_at"
+  echo "Timer ended   ($(date -u))"
 }
 
 cmd_report() {
-  if [ $# -lt 2 ]; then
-    echo "Error: missing arguments." >&2
-    echo "Usage: aw report <name> \"<note>\"" >&2
-    exit 1
+  if [ $# -ne 2 ]; then
+    echo "Usage: aw report <name> \"<note>\"" >&2; exit 1
   fi
-  local name="$1"
-  local note="$2"
-
   load_config
+  local name="$1" note="$2" target="$PWD/workspaces/$1"
+  local started_at="" ended_at="" duration=""
+  [ -f "$target/.started_at" ] && started_at="$(cat "$target/.started_at")"
+  [ -f "$target/.ended_at" ]   && ended_at="$(cat "$target/.ended_at")"
+  if [ -n "$started_at" ] && [ -n "$ended_at" ]; then
+    duration=$(( ended_at - started_at ))
+  fi
 
-  local ts
-  ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  local ts; ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   mkdir -p "$(dirname "$REPORTS_PATH")"
-  jq -nc --arg ts "$ts" --arg name "$name" --arg note "$note" \
-    '{ts: $ts, name: $name, note: $note}' >> "$REPORTS_PATH"
-  echo "Appended report for '$name' to $REPORTS_PATH"
+
+  if [ -n "$duration" ]; then
+    jq -nc --arg ts "$ts" --arg name "$name" --arg note "$note" \
+           --argjson duration_seconds "$duration" \
+           '{ts:$ts,name:$name,note:$note,duration_seconds:$duration_seconds}' >> "$REPORTS_PATH"
+    echo "Appended report for '$name' (duration ${duration}s) to $REPORTS_PATH"
+  else
+    jq -nc --arg ts "$ts" --arg name "$name" --arg note "$note" \
+           '{ts:$ts,name:$name,note:$note,duration_seconds:null}' >> "$REPORTS_PATH"
+    if [ -z "$started_at" ] && [ -z "$ended_at" ]; then
+      echo "Appended report for '$name' (no timer — aw start/end pas appelés) to $REPORTS_PATH" >&2
+    elif [ -z "$ended_at" ]; then
+      echo "Appended report for '$name' (aw end manquant) to $REPORTS_PATH" >&2
+    fi
+  fi
 }
 
 cmd_context() {
   load_config
   local brief="$REPO_PATH/shared/agent-brief.md"
-  if [ ! -f "$brief" ]; then
-    echo "Error: brief not found at $brief" >&2
-    exit 1
-  fi
+  [ -f "$brief" ] || { echo "Error: $brief missing" >&2; exit 1; }
   cat "$brief"
 }
 
 cmd_archive() {
-  if [ $# -lt 1 ]; then
-    echo "Error: missing workspace name." >&2
-    echo "Usage: aw archive <name>" >&2
-    exit 1
-  fi
+  [ $# -eq 1 ] || { echo "Usage: aw archive <name>" >&2; exit 1; }
   local target="$PWD/workspaces/$1"
-  if [ ! -d "$target" ]; then
-    echo "Error: no workspace at $target" >&2
-    exit 1
-  fi
+  [ -d "$target" ] || { echo "Error: no workspace at $target" >&2; exit 1; }
   touch "$target/.archive"
   echo "Archived: $target"
 }
 
 cmd_revive() {
-  if [ $# -lt 1 ]; then
-    echo "Error: missing workspace name." >&2
-    echo "Usage: aw revive <name>" >&2
-    exit 1
-  fi
+  [ $# -eq 1 ] || { echo "Usage: aw revive <name>" >&2; exit 1; }
   local target="$PWD/workspaces/$1"
-  if [ ! -d "$target" ]; then
-    echo "Error: no workspace at $target" >&2
-    exit 1
-  fi
+  [ -d "$target" ] || { echo "Error: no workspace at $target" >&2; exit 1; }
   rm -f "$target/.archive"
   echo "Revived: $target"
 }
@@ -211,11 +181,7 @@ cmd_list() {
   for d in "$dir"/*/; do
     [ -d "$d" ] || continue
     name="$(basename "$d")"
-    if [ -f "$d/.archive" ]; then
-      status=archived
-    else
-      status=live
-    fi
+    if [ -f "$d/.archive" ]; then status=archived; else status=live; fi
     case "$mode" in
       live)     [ "$status" = "live" ] || continue ;;
       archived) [ "$status" = "archived" ] || continue ;;
@@ -230,18 +196,12 @@ cmd_list() {
   done
 }
 
-# --- Dispatch ---------------------------------------------------------------
-
-if [ $# -eq 0 ]; then
-  cmd_help
-  exit 0
-fi
-
-subcommand="$1"
-shift
-
+if [ $# -eq 0 ]; then cmd_help; exit 0; fi
+subcommand="$1"; shift
 case "$subcommand" in
   new)            cmd_new "$@" ;;
+  start)          cmd_start "$@" ;;
+  end)            cmd_end "$@" ;;
   report)         cmd_report "$@" ;;
   archive)        cmd_archive "$@" ;;
   revive)         cmd_revive "$@" ;;
