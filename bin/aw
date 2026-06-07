@@ -69,6 +69,7 @@ cmd_new() {
   touch "$target/outputs/.gitkeep"
   : > "$target/inputs/prompt.md"
   cp "$src" "$target/CLAUDE.md"
+  cp "$src" "$target/AGENTS.md"
 
   echo "Created: $target"
   echo "Next: fill $target/inputs/prompt.md, then 'cd $target && claude'"

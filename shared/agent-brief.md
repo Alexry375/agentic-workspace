@@ -56,6 +56,38 @@ $PWD/workspaces/<name>/              ← créé n'importe où par aw new
 
 Pourquoi une session dédiée et pas un sub-agent ? Pour que l'agent du workspace garde accès aux outils complets (Agent tool, sub-agents, etc.) — impossible si lui-même est un sub-agent de la main.
 
+## Project-lab : quand un workspace devient un projet
+
+Un workspace seul (`$PWD/workspaces/<name>/`) suffit pour du **one-shot**.
+Mais si son `outputs/` contient un **artefact permanent** qu'on itère pendant
+des semaines (une webapp, une lib, un corpus, un site), on **scinde** :
+
+```
+<project>-lab/
+├── repo/                          ← le code permanent versionné (git/GitHub)
+└── workspaces/
+    ├── <seed-workspace>/          ← workspace d'origine, gardé pour son inputs/
+    │   └── .archive               (typiquement archivé une fois repo/ stable)
+    └── <future-task>/             ← workspaces ultérieurs qui contribuent à repo/
+```
+
+Règles :
+
+- `repo/` est la cible permanente : son propre git, son propre README, son
+  propre déploiement. Survit à toute archive de workspace.
+- Les workspaces sont des **contributions scopées** : chacun pose dans
+  `outputs/` quelque chose qu'un agent intègre ensuite dans `repo/`.
+- Un projet = un `<project>-lab/`. Pas deux artefacts permanents distincts
+  sous le même lab (sinon on fork).
+- Le seed workspace reste : son `inputs/` est irreproductible. On archive
+  via `aw archive`, on ne supprime jamais.
+- Naming : `<project>-lab/` (ex. `learning-lab/`, `nexus-lab/`). Le suffixe
+  `-lab` signale "ce truc a du code permanent ET des workspaces jetables".
+
+Pas de commande CLI pour scaffolder — c'est une convention de dossiers, pas
+un outil. Au moment où tu décides de scinder :
+`mkdir <project>-lab/{repo,workspaces}` puis `mv` ce que tu as déjà.
+
 ## Commandes (toutes lisibles dans `bin/aw`)
 
 | Commande | Qui appelle | Effet |

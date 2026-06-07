@@ -113,6 +113,35 @@ Two reinforcing mechanisms, both always on at the user level:
 
 A workspace agent can itself create a child workspace (`aw new <child>` from its root) for heavy isolated work. The same Pattern A (`Agent` tool intra-session) / Pattern B (child workspace + critical audit at delivery) applies. No nested `claude -p` processes.
 
+## Project-lab pattern (when a workspace outgrows itself)
+
+A single workspace under `$PWD/workspaces/<name>/` is the right shape for **one-shot work** — fill `inputs/prompt.md`, run `claude`, harvest `outputs/`. But sometimes a workspace produces a non-disposable artifact: a webapp, a library, a paper, a corpus that you keep iterating on for weeks. Once that artifact is bigger than the workspace that birthed it, **split**:
+
+```
+<project>-lab/
+├── repo/                              ← permanent code / artifact, versioned (git, GitHub…)
+│   ├── (whatever the project is — Next.js app, Python package, docs site…)
+│   └── README.md, ARCHITECTURE.md, CONTRIBUTING.md
+└── workspaces/
+    ├── <seed-workspace>/              ← the original one-shot, kept for its inputs/ corpus
+    │   ├── inputs/ outputs/ CLAUDE.md AGENTS.md
+    │   └── .archive                   ← typically archived once repo/ is stable
+    └── <future-task>/                 ← later: a sub-task that contributes to repo/
+        ├── inputs/ outputs/ CLAUDE.md AGENTS.md
+        └── ...
+```
+
+The rationale:
+
+- **`repo/` is the permanent target.** It has its own git history, its own README, its own deploy. It survives every workspace being archived.
+- **`workspaces/` are scoped contributions.** Each one delivers something into `outputs/` that an agent then folds into `repo/` (a feature, a refactor, a content batch, a research note). The workspace stays around for its inputs and audit trail, but the diff is what matters.
+- **One project = one `<project>-lab/`.** Don't mix multiple permanent artifacts under one lab. If your single repo grows two distinct deliverables, fork the lab.
+- **The seed workspace stays.** It's where the project's `inputs/` corpus (scraped data, original spec) lives. Archive it with `aw archive` once repo/ is self-sufficient, but never delete it — its `inputs/` is irreproducible by the agent alone.
+
+Naming: stick to `<project>-lab/` (e.g. `learning-lab/`, `nexus-lab/`, `research-lab/`). The `-lab` suffix signals "this is a project with permanent code AND throwaway workspaces", not just a single one-shot.
+
+There is no CLI command to scaffold a project-lab — it's a folder convention, not a tool. When the moment comes, just `mkdir <project>-lab/{repo,workspaces}` and `mv` what you already have.
+
 ## Design constraints
 
 - **≤ 8 GB RAM** for the workspace alone (rules out massive parallelism)
