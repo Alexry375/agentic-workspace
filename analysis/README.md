@@ -70,18 +70,24 @@ confiance à ce fichier).
 | [natas](natas.md) | ok | Tâche L1-L2 déterministe + vérif empirique `curl` HTTP 200 = preuve directe ; one-shot Agent intra-session | partiellement — pour L1-L2 la vérif empirique suffit ; tests unitaires deviennent critiques en L3+ inférentiel |
 | [relay_x_formex_finalize](relay_x_formex_finalize.md) | ok | Solide globalement ; mini-incident sur suppression `pictogrammes/` validée par sub-agent d'audit qui a vérifié au mauvais path | oui — test prérequis déclaratif avant toute action destructive (~5 lignes) |
 | [audit-monsantorin](audit-monsantorin.md) | ok | Audit textuel pur, 12 findings tracés ligne-par-ligne, risque hallu ≈ 0 % car méthode non-spéculative | partiellement — 4/12 findings dynamiques gagneraient à exécution (B2/B3/B7/B8) ; lecture suffit pour 8/12 |
+| [alpha](alpha.md) | ok | Smoke test du tooling V2 (`aw new`), pas une livraison fonctionnelle ; workspace éphémère | N/A — c'était le test |
+| [country_uk_audit](country_uk_audit.md) | ok | Audit empirique par parsing XML direct de 4 fichiers CLML + cross-vérif feed Atom → 3 findings critiques avant code (C1 inline-ranges, C2 natural-key, C3 risques externes) | partiellement — test d'intégration empirique précoce aurait détecté C1+C2 ; C3 hors test |
+| [regulatory_landscape_cosmetics](regulatory_landscape_cosmetics.md) | ok | 18 sub-agents en parallèle, **zéro cross-check inter-agents** → erreur Brunei (Annex VI/VII inversés) détectée seulement à l'audit adversarial post-livraison | oui partiellement — citation check + cross-validation par source autoritative + audit à mi-parcours |
+| [restyle-interface-e](restyle-interface-e.md) | ok | Theme E livré sur CSS centralisé + 14 fichiers Java minimaux, validé par build vert + captures + audit | partiellement — visual regression CI + assertion structurelle CSS auraient durci la validation |
+| [uk_clml_implementation_round2](uk_clml_implementation_round2.md) | ok partiel | Correctif round 1 : oracle syntaxique indépendant (`extract_truth.py`, zéro import `clml_diff`) → métrique non-tautologique 89-100 % ; nouvelle limite = précision borne inférieure honnête | oui — test différentiel body_rows + annotation humaine d'un extra-échantillon auraient calibré la borne |
 
 ## Patterns émergents
 
-11 analyses au 2026-06-07. Récurrences solides (≥3 occurrences = admission `procedure.md` envisageable) :
+16 analyses au 2026-06-07. Récurrences solides (≥3 occurrences = admission `procedure.md` envisageable) :
 
-### 1. Métrique acceptée sans référence indépendante — **3 occurrences ⇒ candidat embarquement**
+### 1. Métrique acceptée sans référence indépendante — **3 occurrences + 1 résolution ⇒ embarquement justifié**
 
-- `uk_clml` : `content_correctness=1.0` tautologique (X==X)
+- `uk_clml` (round 1) : `content_correctness=1.0` tautologique (X==X)
 - `font-size-fda` : `accuracy=87.5 %` sans baseline triviale ni annotation humaine
 - `objets-trouves-v2` : flips livrés sans eval set annoté → 22/26 faux positifs masqués
+- **Résolution exemplaire** : `uk_clml_round2` montre la structure correcte — oracle syntaxique indépendant (`extract_truth.py`, zéro import du module mesuré), métrique passe à 89-100 % avec borne inférieure honnête.
 
-**Discipline candidate** : avant toute claim de métrique, exiger en `result.md` (a) baseline triviale chiffrée, OU (b) ground-truth indépendant de la fonction mesurée, OU (c) eval set annoté avec taux de bruit mesuré. Mutation test pour la circularité quand la métrique est un score sur une fonction qu'on a soi-même écrite.
+**Discipline candidate** : avant toute claim de métrique, exiger en `result.md` (a) baseline triviale chiffrée, OU (b) ground-truth produit par un module **disjoint** de celui mesuré (cf. `uk_clml_round2`), OU (c) eval set annoté avec taux de bruit mesuré. Mutation test pour la circularité quand la métrique est un score sur une fonction qu'on a soi-même écrite.
 
 ### 2. Gate prédictive avant action coûteuse ou destructive — **2 occurrences ⇒ veille**
 
@@ -110,3 +116,17 @@ confiance à ce fichier).
 - `relay_x_formex_finalize` : sub-agent d'audit checke `du -sh` au mauvais path → valide suppression dangereuse
 
 **Discipline existante** : Pattern B step 3 de `procedure.md` (audit critique du créateur à la livraison) couvre la cible. À surveiller : la même blind spot peut frapper le sub-agent d'audit lui-même.
+
+### 6. Validation visuelle non-mesurée — **2 occurrences ⇒ veille**
+
+- `webapp-cinematic` : captures montrent un rendu fonctionnel sans révéler que `.device-screen / viewport ≈ 0.5` au lieu de ≥ 0.9 exigé par la spec.
+- `restyle-interface-e` : 3 captures manuelles validant l'instant T, aucune visual regression CI ; couleurs en dur (M4) seraient passées sans le grep d'audit a posteriori.
+
+**Forme** : captures sans assertion chiffrée ≠ test. Pour toute spec UI/visuelle, exiger soit (a) mesure géométrique (bbox/viewport, hauteur de texte en px), soit (b) screenshot diff CI, soit (c) assertion structurelle sur la source (grep CSS, AST). 3e occurrence à chercher.
+
+### 7. Empirisme précoce sur format / source externe — **2 occurrences ⇒ veille**
+
+- `country_uk_audit` : parsing direct du CLML brut révèle 3 findings critiques que la doc dev officielle masquait.
+- `regulatory_landscape_cosmetics` : 18 fiches juridictions sans cross-check inter-agents → erreur Brunei survit jusqu'à l'audit final.
+
+**Forme** : pour toute tâche qui dépend d'un format/spec externe, **télécharger 2-3 samples bruts et les parser avant d'écrire le code/document**. Symétrie inverse intéressante : `uk_clml round 1` aurait évité son piège si l'agent avait fait ce travail empirique sur les XML hold-out.
