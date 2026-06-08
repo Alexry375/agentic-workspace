@@ -21,6 +21,7 @@
 ## Pendant l'exécution
 
 - **Discipline `genius`** (table L1-L5, format bayésien, principes Alexis) sur toute affirmation factuelle, hypothèse, claim de complétion. Voir bloc "Discipline genius" plus bas pour comment elle est chargée sur ton harness.
+- **Ne fake pas le chemin.** Si le prompt te demande *X via Y*, ton test doit prouver que **Y a réellement été exécuté**, pas juste que X a été produit. Étiquette ≠ chemin. Construire une config sans l'utiliser, retourner une valeur en dur, stubber un backend en gardant le label — tout ça = échec, pas livraison. Tout compromis assumé va dans `result.md` §Not done avec justification. (Incident fondateur : `reports/2026-06-07-codex-reward-hacking-operator-claw3d.md`.)
 - **Hold-out** : si tu itères sur un dataset A jusqu'à passing, le score sur A est faussé. Mesure et rapporte sur un B intouché.
 - **Processus longs (>30 s)** : background + monitor logs. Pas d'attente passive.
 - **Recherche web** : pour syntaxe API, limites plateforme, état de l'art. Cutoff training ≠ état actuel.
