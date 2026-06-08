@@ -16,21 +16,27 @@ Biais vers la **soustraction** : chaque brick gagne sa place.
 ├── bin/aw                           ← CLI
 ├── install.sh                       ← wizard, écrit ~/.agentic-workspace/config.json
 ├── shared/
-│   ├── procedure.md                 ← inlinée dans CLAUDE.md par aw new
+│   ├── procedure-core.md            ← noyau harness-agnostique
+│   ├── procedure-claude-tail.md     ← spécifique Claude (Agent tool, skill genius user-level)
+│   ├── procedure-codex-tail.md     ← spécifique Codex (subagents en langage naturel)
 │   ├── agent-brief.md               ← CE FICHIER (aw context)
-│   └── skills/genius/SKILL.md       ← skill canonique, à synchroniser avec ~/.claude/
+│   └── guides/                      ← guides opt-in (cf. plus bas)
 └── README.md, LICENSE
 
 ~/.agentic-workspace/                ← état per-machine
 ├── config.json                      {repo_path, reports_path}
 └── reports.jsonl                    append-only bilans
 
-~/.claude/                           ← prérequis user-level
+~/.claude/                           ← prérequis user-level Claude
 ├── settings.json                    hook UserPromptSubmit "[GENIUS] ..." actif
 └── skills/genius/SKILL.md           skill auto-disponible
 
+~/.agents/skills/genius/SKILL.md     ← prérequis user-level Codex (auto-discovery
+                                       depuis ~/.agents/skills/ + .agents/skills/)
+
 $PWD/workspaces/<name>/              ← créé n'importe où par aw new
-├── CLAUDE.md                        procedure inlinée (pas d'@import)
+├── CLAUDE.md                        core + claude-tail concaténés (pas d'@import)
+├── AGENTS.md                        core + codex-tail concaténés (pas d'@import)
 ├── inputs/prompt.md                 spec autoritaire écrite par la main
 ├── inputs/<autres>                  data, refs
 ├── outputs/                         livrables de l'agent
@@ -38,7 +44,7 @@ $PWD/workspaces/<name>/              ← créé n'importe où par aw new
 └── .archive                         flag posé par aw archive
 ```
 
-**Invariant** : un workspace est self-contained (`CLAUDE.md` inliné, pas d'`@import`). Le skill `genius` reste au niveau utilisateur (auto-disponible).
+**Invariant** : un workspace est self-contained (`CLAUDE.md` et `AGENTS.md` inlinés, pas d'`@import`). Le skill `genius` reste au niveau utilisateur de chaque harness (Claude : `~/.claude/skills/genius/` ; Codex : `~/.agents/skills/genius/`).
 
 ## Le pivot mental
 
@@ -113,14 +119,14 @@ Source de vérité unique :
 
 Le nom du dossier ne change **jamais** (sinon historique session Claude à `~/.claude/projects/<chemin-encodé>/` orphelin). Énumère via `aw list`, pas `ls workspaces/`.
 
-## Hook & skill `genius`
+## Skill `genius`
 
-Les deux actifs en permanence au niveau utilisateur.
+Vit au niveau utilisateur de chaque harness, pas dans ce dépôt :
 
-- **Skill** à `~/.claude/skills/genius/SKILL.md` (canonique pour l'utilisateur), synchronisé avec `shared/skills/genius/SKILL.md` dans ce dépôt. Auto-disponible dans toute session.
-- **Hook** `UserPromptSubmit` dans `~/.claude/settings.json` prepende `[GENIUS] ...` à chaque prompt.
+- **Claude** : `~/.claude/skills/genius/SKILL.md` auto-disponible + hook `UserPromptSubmit` dans `~/.claude/settings.json` qui prepende `[GENIUS] ...` à chaque prompt.
+- **Codex** : `~/.agents/skills/genius/SKILL.md` (auto-discovery par Codex depuis `~/.agents/skills/`, `.agents/skills/` du repo, `/etc/codex/skills`). Pas de hook équivalent — l'agent doit invoquer la discipline explicitement.
 
-**Edge case sous-agents (Pattern A)** : auto-invocation aléatoire. Inclus dans le prompt du sous-agent : *"Avant d'agir, lis et applique `~/.claude/skills/genius/SKILL.md`."*
+**Edge case sous-agents (Pattern A)** : auto-invocation aléatoire sur les deux harnesses. Inclus dans le prompt du sous-agent : *"Avant d'agir, lis et applique le skill `genius` (Claude : `~/.claude/skills/genius/SKILL.md` ; Codex : `~/.agents/skills/genius/SKILL.md`)."*
 
 ## Guides opt-in
 
@@ -133,10 +139,10 @@ correspond au trigger ci-dessous. Pas de frontmatter, pas d'auto-découverte
 |---|---|
 | `shared/guides/reimplementation-parity.md` | ré-implémenter un système existant sur une autre stack / langage / framework, **ou** absorber le cœur d'un repo upstream en l'adaptant à un autre cas d'usage |
 
-Différence avec `shared/skills/` : un *skill* est synchronisé avec
-`~/.claude/skills/` et auto-disponible partout (cf. `genius`) ; un *guide*
-est confiné au repo et opt-in. Pruning ≥3 occurrences observées, comme le
-reste de la méthode.
+Différence avec un *skill* (`genius`) : le skill vit user-level et est
+auto-disponible dans toute session du harness ; un *guide* est confiné au
+repo et opt-in. Pruning ≥3 occurrences observées, comme le reste de la
+méthode.
 
 ## Reports
 
@@ -148,9 +154,9 @@ reste de la méthode.
 
 ## Méthode (si tu modifies le dépôt)
 
-- **Brick admission rule** : un candidat brick rentre dans `procedure.md` qu'avec ≥3 occurrences observées. 2 = candidat. 1 = noté, pas embarqué.
+- **Brick admission rule** : un candidat brick rentre dans `procedure-core.md` (ou un tail si harness-spécifique) qu'avec ≥3 occurrences observées. 2 = candidat. 1 = noté, pas embarqué.
 - **Soustraction par défaut** : si un brick ne se défend pas après 1-2 sessions, il dégage.
-- **Pas de duplication source-de-vérité** : `genius` a deux copies (`shared/skills/genius/` et `~/.claude/skills/genius/`). Sync manuel (cp depuis le repo). C'est le user-level qui est exécuté.
+- **Pas de duplication source-de-vérité** : `genius` vit exclusivement au niveau utilisateur de chaque harness. Pas de copie dans ce dépôt.
 - **Pas de chemin hardcodé** dans les workspaces. Tout passe par l'inline au moment de `aw new`.
 
 ## Référentiels prior art (pas des dépendances)
@@ -164,6 +170,6 @@ reste de la méthode.
 
 ## Si tu cherches plus de profondeur
 
-- **`shared/procedure.md`** : ce que voit l'agent dans son `CLAUDE.md`.
+- **`shared/procedure-core.md` + tails** : ce que voit l'agent dans son `CLAUDE.md`/`AGENTS.md` (concaténation au moment du `aw new`).
 - **`bin/aw`** : ~200 lignes de bash, pas de magie cachée.
 - `git log --oneline` : V0 → V1 → V1.1 → V2 → pivot 2026-06-07.

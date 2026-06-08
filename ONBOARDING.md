@@ -31,9 +31,11 @@ agentic-workspace/
 ├── bin/aw                              # CLI
 ├── install.sh                          # wizard
 ├── shared/
-│   ├── procedure.md                    # unique workspace procedure (inlined by aw new)
+│   ├── procedure-core.md               # harness-agnostic core (inlined by aw new)
+│   ├── procedure-claude-tail.md        # Claude-specific (Agent tool, user-level skill+hook)
+│   ├── procedure-codex-tail.md         # Codex-specific (subagents via natural language)
 │   ├── agent-brief.md                  # dense brief, printed by `aw context`
-│   └── skills/genius/SKILL.md          # canonical genius, sync target for ~/.claude/
+│   └── guides/                         # opt-in domain guides
 ├── ONBOARDING.md, README.md, LICENSE
 ```
 
@@ -41,13 +43,16 @@ Per-user state lives in `~/.agentic-workspace/`:
 - `config.json` — `{repo_path, reports_path}` written by install.sh
 - `reports.jsonl` — append-only bilans from `aw report` (with `duration_seconds`)
 
-The `genius` skill and its `UserPromptSubmit` hook are at the user level
-(`~/.claude/skills/genius/` and `~/.claude/settings.json`), both unconditional.
-Workspaces rely on that user-level install — `aw new` does not copy the skill.
+The `genius` skill lives at the user level of each harness:
+`~/.claude/skills/genius/` for Claude (paired with a `UserPromptSubmit` hook
+in `~/.claude/settings.json`) and `~/.agents/skills/genius/` for Codex
+(auto-discovered, no hook). Workspaces rely on that user-level install —
+`aw new` does not copy the skill.
 
 Workspaces are created at `$PWD/workspaces/<name>/` by `aw new`. The procedure
-is **inlined** into `CLAUDE.md` (no `@import`), so moving or deleting the
-cloned repo does not break existing workspaces.
+is **inlined** into both `CLAUDE.md` (core + claude-tail) and `AGENTS.md`
+(core + codex-tail) — no `@import`, so moving or deleting the cloned repo
+does not break existing workspaces.
 
 ## Le pivot 2026-06-07
 
@@ -65,21 +70,20 @@ Récursion autorisée : un workspace peut créer son propre enfant (et porte la 
 ## Read these first
 
 1. `README.md`
-2. `shared/procedure.md` — ce que voit l'agent dans son `CLAUDE.md`
+2. `shared/procedure-core.md` (+ `procedure-claude-tail.md` ou `procedure-codex-tail.md`) — ce que voit l'agent dans son `CLAUDE.md` / `AGENTS.md`
 3. `shared/agent-brief.md` — référence pour les agents qui touchent au méta-repo
 4. `bin/aw` — générateur, ~200 lignes de bash
-5. `shared/skills/genius/SKILL.md`
+5. `~/.claude/skills/genius/SKILL.md` (ou `~/.agents/skills/genius/SKILL.md` côté Codex) — vit hors repo
 
 ## Method already established (don't re-litigate without a strong signal)
 
-- **Audit critique par la main à la livraison** : Pattern B step 4 de `procedure.md`. Lis directement les artefacts du workspace, jamais juste son résumé. Cherche métriques tautologiques, critères abandonnés silencieusement, auto-audits qui renomment au lieu de traiter. Incident fondateur : `uk_clml_implementation` 2026-05-14.
+- **Audit critique par la main à la livraison** : Pattern B step 3 de `procedure-core.md`. Lis directement les artefacts du workspace, jamais juste son résumé. Cherche métriques tautologiques, critères abandonnés silencieusement, auto-audits qui renomment au lieu de traiter. Incident fondateur : `uk_clml_implementation` 2026-05-14.
 - **Timer split** : agent du workspace fait `aw start`/`aw end` ; main fait `aw report`. Trois commandes distinctes, séparation de responsabilités claire.
-- **Pattern A (Agent tool)** = intra-workspace sub-task. Le sous-agent rend un résumé structuré, transcript non persisté.
+- **Pattern A (délégation intra-session)** = sub-task dans la même session. Claude : tool `Agent`. Codex : demande explicite en langage naturel (`spawn N subagents...`). Le sous-agent rend un résumé structuré, transcript non persisté.
 - **Pattern B (`aw new <child>`)** = workspace enfant pour du lourd isolé. Récursion autorisée (différence avec la version pré-pivot). **Pas de `claude -p` récursif.**
-- **Skill priority** = `Enterprise > Personal > Project`. `genius` vit une fois au niveau user (`~/.claude/skills/genius/`) ; `shared/skills/` est la source canonique de sync.
-- **Self-containment du workspace** (procédure seulement) : `aw new` inline. End users never see `shared/`. Le skill n'est **pas** copié.
-- **Hook inconditionnel** : `~/.claude/settings.json` prepende `[GENIUS] ...` à chaque prompt.
-- **Brick admission rule** : ≥3 occurrences dans des prompts réels avant d'embarquer dans `procedure.md`.
+- **`genius` au niveau user de chaque harness** : Claude `~/.claude/skills/genius/` + hook `UserPromptSubmit` ; Codex `~/.agents/skills/genius/` (pas de hook). Pas de copie dans le repo.
+- **Self-containment du workspace** (procédure seulement) : `aw new` inline core + tail. End users never see `shared/`. Le skill n'est **pas** copié.
+- **Brick admission rule** : ≥3 occurrences dans des prompts réels avant d'embarquer dans `procedure-core.md`.
 
 ## Reference repos worth a look
 

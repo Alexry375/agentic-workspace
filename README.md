@@ -1,17 +1,19 @@
 # agentic-workspace
 
-A minimalist `workspace/` template for Claude Code agents. **One workspace type, dedicated interactive sessions.** A **main session** (with the human) aligns, writes `inputs/prompt.md`, runs `aw new`. The human opens a **dedicated session** in the workspace; the agent works autonomously. The main session resumes, adversarially audits the delivery, then files the report.
+A minimalist `workspace/` template for autonomous coding agents (Claude Code and Codex CLI). **One workspace type, dedicated interactive sessions.** A **main session** (with the human) aligns, writes `inputs/prompt.md`, runs `aw new`. The human opens a **dedicated session** in the workspace; the agent works autonomously. The main session resumes, adversarially audits the delivery, then files the report.
 
-Workspaces inline their procedure into a self-contained `CLAUDE.md`, so moving or deleting the cloned repo never breaks an existing workspace. The `genius` skill is installed once at the user level and shared across all workspaces.
+Workspaces inline their procedure into self-contained `CLAUDE.md` and `AGENTS.md` files (the harness picks whichever it natively reads), so moving or deleting the cloned repo never breaks an existing workspace. The `genius` skill is installed once at each harness's user level and shared across all workspaces.
 
 ```
 agentic-workspace/
 ├── bin/aw                              # CLI: new / start / end / report / list / archive / context
 ├── install.sh                          # wizard: writes ~/.agentic-workspace/config.json
 ├── shared/
-│   ├── procedure.md                    # workspace procedure (inlined into CLAUDE.md by aw new)
+│   ├── procedure-core.md               # harness-agnostic core (inlined by aw new)
+│   ├── procedure-claude-tail.md        # Claude-specific tail (concatenated into CLAUDE.md)
+│   ├── procedure-codex-tail.md         # Codex-specific tail (concatenated into AGENTS.md)
 │   ├── agent-brief.md                  # dense brief printed by `aw context`
-│   └── skills/genius/SKILL.md          # canonical skill, sync target for ~/.claude/skills/genius/
+│   └── guides/                         # opt-in domain guides
 ├── ONBOARDING.md                       # context handoff for a fresh session on this repo
 ├── README.md
 └── LICENSE
@@ -100,18 +102,18 @@ Check from a script:
 
 `aw list` filters archived by default so agents never see hundreds of dormant workspaces.
 
-## The `genius` skill and hook
+## The `genius` skill (per-harness, user-level)
 
-Two reinforcing mechanisms, both always on at the user level:
+The skill lives once per harness, outside this repo. `aw new` does not copy it.
 
-- **Skill** — `~/.claude/skills/genius/SKILL.md` (kept in sync with `shared/skills/genius/SKILL.md`). Auto-discovered in every Claude Code session of the user. `aw new` does not copy it locally.
-- **Hook** — `UserPromptSubmit` entry in `~/.claude/settings.json` prepends `[GENIUS] ...` to every prompt unconditionally.
+- **Claude Code** — `~/.claude/skills/genius/SKILL.md` auto-discovered every session, **plus** a `UserPromptSubmit` hook in `~/.claude/settings.json` that prepends `[GENIUS] ...` to every prompt.
+- **Codex CLI** — `~/.agents/skills/genius/SKILL.md` auto-discovered via Codex's skill scan (`~/.agents/skills/`, `.agents/skills/` in the repo, `/etc/codex/skills`). No hook equivalent; the procedure tells the agent to invoke the discipline explicitly.
 
-**Sub-agents (`Agent` tool) edge case.** A sub-agent auto-discovers skills via their description, but auto-invocation of `genius` is unreliable. When you spawn a sub-agent on a non-trivial task, include in its prompt: *"Before acting, read and apply `~/.claude/skills/genius/SKILL.md`."*
+**Sub-agents edge case.** Auto-invocation of `genius` inside sub-agents is unreliable on both harnesses. When you spawn one on a non-trivial task, include in its prompt: *"Before acting, read and apply the `genius` skill (Claude: `~/.claude/skills/genius/SKILL.md`; Codex: `~/.agents/skills/genius/SKILL.md`)."*
 
 ## Recursion
 
-A workspace agent can itself create a child workspace (`aw new <child>` from its root) for heavy isolated work. The same Pattern A (`Agent` tool intra-session) / Pattern B (child workspace + critical audit at delivery) applies. No nested `claude -p` processes.
+A workspace agent can itself create a child workspace (`aw new <child>` from its root) for heavy isolated work. The same Pattern A (in-session delegation — `Agent` tool on Claude, natural-language subagent request on Codex) / Pattern B (child workspace + critical audit at delivery) applies. No nested `claude -p` / `codex -p` processes.
 
 ## Project-lab pattern (when a workspace outgrows itself)
 

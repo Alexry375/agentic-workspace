@@ -62,14 +62,18 @@ cmd_new() {
   if [ -e "$target" ]; then
     echo "Error: workspace '$name' already exists at $target" >&2; exit 1
   fi
-  local src="$REPO_PATH/shared/procedure.md"
-  [ -f "$src" ] || { echo "Error: $src missing" >&2; exit 1; }
+  local core="$REPO_PATH/shared/procedure-core.md"
+  local claude_tail="$REPO_PATH/shared/procedure-claude-tail.md"
+  local codex_tail="$REPO_PATH/shared/procedure-codex-tail.md"
+  for f in "$core" "$claude_tail" "$codex_tail"; do
+    [ -f "$f" ] || { echo "Error: $f missing" >&2; exit 1; }
+  done
 
   mkdir -p "$target/inputs" "$target/outputs"
   touch "$target/outputs/.gitkeep"
   : > "$target/inputs/prompt.md"
-  cp "$src" "$target/CLAUDE.md"
-  cp "$src" "$target/AGENTS.md"
+  cat "$core" "$claude_tail" > "$target/CLAUDE.md"
+  cat "$core" "$codex_tail" > "$target/AGENTS.md"
 
   echo "Created: $target"
   echo "Next: fill $target/inputs/prompt.md, then 'cd $target && claude'"

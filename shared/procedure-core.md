@@ -20,28 +20,26 @@
 
 ## Pendant l'exécution
 
-- **Skill `genius`** auto-disponible (user-level). Applique-le sur toute affirmation factuelle, hypothèse, claim de complétion.
+- **Discipline `genius`** (table L1-L5, format bayésien, principes Alexis) sur toute affirmation factuelle, hypothèse, claim de complétion. Voir bloc "Discipline genius" plus bas pour comment elle est chargée sur ton harness.
 - **Hold-out** : si tu itères sur un dataset A jusqu'à passing, le score sur A est faussé. Mesure et rapporte sur un B intouché.
-- **Processus longs (>30 s)** : `run_in_background` + monitor logs. Pas d'attente passive.
+- **Processus longs (>30 s)** : background + monitor logs. Pas d'attente passive.
 - **Recherche web** : pour syntaxe API, limites plateforme, état de l'art. Cutoff training ≠ état actuel.
 
 ## Délégation
 
 Récursion autorisée — tu peux toi-même créer un workspace enfant.
 
-### Pattern A — `Agent` tool intra-session
+### Pattern A — délégation intra-session
 
-Pour Explore, Plan, audit, analyse parallèle. Le sous-agent rend un résumé structuré = ta compaction implicite.
-
-**Discipline genius** : inclus dans le prompt du sous-agent : *"Avant d'agir, lis et applique `~/.claude/skills/genius/SKILL.md`."* L'auto-invocation est aléatoire.
+Pour Explore, Plan, audit, analyse parallèle. Le sous-agent rend un résumé structuré = ta compaction implicite. **Mécanisme exact : voir bloc "Délégation intra-session" plus bas (dépend du harness).**
 
 ### Pattern B — `aw new <child>` (workspace enfant)
 
 Pour du lourd (>30 min, état isolé). Tu :
 
 1. `aw new <child>` (depuis ta racine), remplis `workspaces/<child>/inputs/prompt.md` exhaustivement.
-2. Demandes à l'humain de lancer `cd workspaces/<child> && claude`.
-3. **À la livraison de l'enfant : tu auditres adversarialement ses outputs** — code, métriques, fichiers — jamais juste son `result.md`. Cherche : métriques tautologiques/circulaires, critères abandonnés silencieusement, edge cases non investigués, auto-audits qui *renomment* un problème au lieu de le traiter (incident `uk_clml` 2026-05-14). Round 2 ciblé via `inputs/round-2.md` si CRITIQUE/IMPORTANT.
+2. Demandes à l'humain de lancer la session dédiée dans `workspaces/<child>/`.
+3. **À la livraison de l'enfant : tu audites adversarialement ses outputs** — code, métriques, fichiers — jamais juste son `result.md`. Cherche : métriques tautologiques/circulaires, critères abandonnés silencieusement, edge cases non investigués, auto-audits qui *renomment* un problème au lieu de le traiter (incident `uk_clml` 2026-05-14). Round 2 ciblé via `inputs/round-2.md` si CRITIQUE/IMPORTANT.
 4. Tu fais ensuite `aw report <child> "<note>"` pour clore l'enfant.
 
 ## Audit adversarial avant complétion
@@ -65,11 +63,11 @@ Trigger 2 : après toute avancée majeure (feature end-to-end, archi committée,
 
 ## Compaction
 
-À ~200 k tokens, si les sub-agents (Pattern A) n'ont pas suffi : écris `outputs/.ledger.md` (objectif, décisions, reste, fichiers) et `/clear`. Relis le ledger au démarrage suivant.
+À ~200 k tokens, si la délégation intra-session (Pattern A) n'a pas suffi : écris `outputs/.ledger.md` (objectif, décisions, reste, fichiers) et compacte/clear. Relis le ledger au démarrage suivant.
 
 ## Si tu es bloqué
 
-Une seule fois : `outputs/blocked.md` (essayé / manque / 2-3 options avec conséquence). Puis termine. **Ne brute-force pas** après 2 tentatives sur le même point — `Agent` tool d'analyse parallèle, ou bloqué.
+Une seule fois : `outputs/blocked.md` (essayé / manque / 2-3 options avec conséquence). Puis termine. **Ne brute-force pas** après 2 tentatives sur le même point — délégation intra-session pour analyse parallèle, ou bloqué.
 
 ## Fin de tâche
 
