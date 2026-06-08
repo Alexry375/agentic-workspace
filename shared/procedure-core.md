@@ -25,29 +25,16 @@
 - **Processus longs (>30 s)** : background + monitor logs. Pas d'attente passive.
 - **Recherche web** : pour syntaxe API, limites plateforme, état de l'art. Cutoff training ≠ état actuel.
 
-## Délégation
-
-Récursion autorisée — tu peux toi-même créer un workspace enfant.
-
-### Pattern A — délégation intra-session
+## Délégation intra-session
 
 Pour Explore, Plan, audit, analyse parallèle. Le sous-agent rend un résumé structuré = ta compaction implicite. **Mécanisme exact : voir bloc "Délégation intra-session" plus bas (dépend du harness).**
-
-### Pattern B — `aw new <child>` (workspace enfant)
-
-Pour du lourd (>30 min, état isolé). Tu :
-
-1. `aw new <child>` (depuis ta racine), remplis `workspaces/<child>/inputs/prompt.md` exhaustivement.
-2. Demandes à l'humain de lancer la session dédiée dans `workspaces/<child>/`.
-3. **À la livraison de l'enfant : tu audites adversarialement ses outputs** — code, métriques, fichiers — jamais juste son `result.md`. Cherche : métriques tautologiques/circulaires, critères abandonnés silencieusement, edge cases non investigués, auto-audits qui *renomment* un problème au lieu de le traiter (incident `uk_clml` 2026-05-14). Round 2 ciblé via `inputs/round-2.md` si CRITIQUE/IMPORTANT.
-4. Tu fais ensuite `aw report <child> "<note>"` pour clore l'enfant.
 
 ## Audit adversarial avant complétion
 
 Trigger 1 : avant tout claim de complétion finale.
 Trigger 2 : après toute avancée majeure (feature end-to-end, archi committée, 1ère livrable d'un module, pivot).
 
-1. Lance un sous-agent `audit-adversarial` (Pattern A) : *"Attaque code (bugs, edge cases, fichiers oubliés), archi (choix structurels fragiles, hypothèses implicites), cadrage (la métrique optimisée correspond-elle au prompt initial ?). Classe CRITIQUE / IMPORTANT / MINEUR. Cite fichier:ligne ou décision pour chaque finding."*
+1. Lance un sous-agent `audit-adversarial` (via délégation intra-session) : *"Attaque code (bugs, edge cases, fichiers oubliés), archi (choix structurels fragiles, hypothèses implicites), cadrage (la métrique optimisée correspond-elle au prompt initial ?). Classe CRITIQUE / IMPORTANT / MINEUR. Cite fichier:ligne ou décision pour chaque finding."*
 2. Traite CRITIQUE et IMPORTANT. Re-audit après.
 3. Finalise `outputs/`.
 
@@ -60,10 +47,6 @@ Trigger 2 : après toute avancée majeure (feature end-to-end, archi committée,
   - `## Adjacent work` — pistes hors scope (optionnel).
 - **`outputs/audit-report.md`** — findings audit + traitement.
 - **`outputs/<artefacts>`** — code, données, docs.
-
-## Compaction
-
-À ~200 k tokens, si la délégation intra-session (Pattern A) n'a pas suffi : écris `outputs/.ledger.md` (objectif, décisions, reste, fichiers) et compacte/clear. Relis le ledger au démarrage suivant.
 
 ## Si tu es bloqué
 

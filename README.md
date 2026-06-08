@@ -111,10 +111,6 @@ The skill lives once per harness, outside this repo. `aw new` does not copy it.
 
 **Sub-agents edge case.** Auto-invocation of `genius` inside sub-agents is unreliable on both harnesses. When you spawn one on a non-trivial task, include in its prompt: *"Before acting, read and apply the `genius` skill (Claude: `~/.claude/skills/genius/SKILL.md`; Codex: `~/.agents/skills/genius/SKILL.md`)."*
 
-## Recursion
-
-A workspace agent can itself create a child workspace (`aw new <child>` from its root) for heavy isolated work. The same Pattern A (in-session delegation — `Agent` tool on Claude, natural-language subagent request on Codex) / Pattern B (child workspace + critical audit at delivery) applies. No nested `claude -p` / `codex -p` processes.
-
 ## Project-lab pattern (when a workspace outgrows itself)
 
 A single workspace under `$PWD/workspaces/<name>/` is the right shape for **one-shot work** — fill `inputs/prompt.md`, run `claude`, harvest `outputs/`. But sometimes a workspace produces a non-disposable artifact: a webapp, a library, a paper, a corpus that you keep iterating on for weeks. Once that artifact is bigger than the workspace that birthed it, **split**:

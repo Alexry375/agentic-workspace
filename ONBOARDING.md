@@ -65,7 +65,7 @@ Anciennement deux types (workspace top-level / sub-workspace). Maintenant un seu
 
 Pourquoi une session dédiée et pas un sub-agent de main ? Pour que l'agent du workspace garde accès aux outils complets (Agent tool, sub-agents) — perdus si lui-même est sub-agent.
 
-Récursion autorisée : un workspace peut créer son propre enfant (et porte la même responsabilité d'audit critique à la livraison).
+L'agent ne crée pas de workspace enfant : ça casserait l'autonomie (il faudrait que la main lance une nouvelle session dédiée). Pour du lourd intra-tâche, il délègue dans sa propre session.
 
 ## Read these first
 
@@ -77,10 +77,9 @@ Récursion autorisée : un workspace peut créer son propre enfant (et porte la 
 
 ## Method already established (don't re-litigate without a strong signal)
 
-- **Audit critique par la main à la livraison** : Pattern B step 3 de `procedure-core.md`. Lis directement les artefacts du workspace, jamais juste son résumé. Cherche métriques tautologiques, critères abandonnés silencieusement, auto-audits qui renomment au lieu de traiter. Incident fondateur : `uk_clml_implementation` 2026-05-14.
+- **Audit critique par la main à la livraison** : la main lit directement les artefacts du workspace, jamais juste son résumé. Cherche métriques tautologiques, critères abandonnés silencieusement, auto-audits qui renomment au lieu de traiter. Incident fondateur : `uk_clml_implementation` 2026-05-14.
 - **Timer split** : agent du workspace fait `aw start`/`aw end` ; main fait `aw report`. Trois commandes distinctes, séparation de responsabilités claire.
-- **Pattern A (délégation intra-session)** = sub-task dans la même session. Claude : tool `Agent`. Codex : demande explicite en langage naturel (`spawn N subagents...`). Le sous-agent rend un résumé structuré, transcript non persisté.
-- **Pattern B (`aw new <child>`)** = workspace enfant pour du lourd isolé. Récursion autorisée (différence avec la version pré-pivot). **Pas de `claude -p` récursif.**
+- **Délégation intra-session** = sub-task dans la même session. Claude : tool `Agent`. Codex : demande explicite en langage naturel (`spawn N subagents...`). Le sous-agent rend un résumé structuré, transcript non persisté. **Pas de workspace enfant** — incohérent avec l'autonomie (forcerait une nouvelle session humaine).
 - **`genius` au niveau user de chaque harness** : Claude `~/.claude/skills/genius/` + hook `UserPromptSubmit` ; Codex `~/.agents/skills/genius/` (pas de hook). Pas de copie dans le repo.
 - **Self-containment du workspace** (procédure seulement) : `aw new` inline core + tail. End users never see `shared/`. Le skill n'est **pas** copié.
 - **Brick admission rule** : ≥3 occurrences dans des prompts réels avant d'embarquer dans `procedure-core.md`.

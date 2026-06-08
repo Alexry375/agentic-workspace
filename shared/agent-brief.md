@@ -1,6 +1,6 @@
-# agentic-workspace — brief pour Claude Code
+# agentic-workspace — brief agent
 
-> Tu es un agent Claude Code qui va utiliser ou modifier `agentic-workspace`.
+> Tu es un agent (Claude Code ou Codex CLI) qui va utiliser ou modifier `agentic-workspace`.
 > Lis tout. Plus dense et plus à jour que le README.
 
 ## En une phrase
@@ -18,7 +18,7 @@ Biais vers la **soustraction** : chaque brick gagne sa place.
 ├── shared/
 │   ├── procedure-core.md            ← noyau harness-agnostique
 │   ├── procedure-claude-tail.md     ← spécifique Claude (Agent tool, skill genius user-level)
-│   ├── procedure-codex-tail.md     ← spécifique Codex (subagents en langage naturel)
+│   ├── procedure-codex-tail.md      ← spécifique Codex (subagents en langage naturel)
 │   ├── agent-brief.md               ← CE FICHIER (aw context)
 │   └── guides/                      ← guides opt-in (cf. plus bas)
 └── README.md, LICENSE
@@ -51,14 +51,13 @@ $PWD/workspaces/<name>/              ← créé n'importe où par aw new
 **Session main** (chez l'humain) :
 1. Aligne avec l'humain (questions précises, contexte riche).
 2. `aw new <name>` puis remplit `workspaces/<name>/inputs/prompt.md` exhaustivement.
-3. Dit à l'humain : *"Lance `cd workspaces/<name> && claude` quand tu peux."*
+3. Dit à l'humain : *"Lance `cd workspaces/<name> && claude` (ou `codex`) quand tu peux."*
 4. À la livraison : **audite adversarialement** (code, métriques, fichiers livrés ≠ `result.md`). Round 2 ciblé via `inputs/round-2.md` si besoin.
 5. `aw report <name> "<note>"` (lit `.started_at`/`.ended_at`, écrit duration_seconds).
 
 **Session dédiée (agent workspace)** :
 1. `aw start` → lit `inputs/prompt.md` (autoritative) → bosse.
-2. Peut elle-même créer un workspace enfant (`aw new <child>` + audit du delivery enfant).
-3. `aw end` en dernière action. **N'appelle pas `aw report`** — la main s'en charge.
+2. `aw end` en dernière action. **N'appelle pas `aw report`** — la main s'en charge.
 
 Pourquoi une session dédiée et pas un sub-agent ? Pour que l'agent du workspace garde accès aux outils complets (Agent tool, sub-agents, etc.) — impossible si lui-même est un sub-agent de la main.
 
@@ -126,7 +125,7 @@ Vit au niveau utilisateur de chaque harness, pas dans ce dépôt :
 - **Claude** : `~/.claude/skills/genius/SKILL.md` auto-disponible + hook `UserPromptSubmit` dans `~/.claude/settings.json` qui prepende `[GENIUS] ...` à chaque prompt.
 - **Codex** : `~/.agents/skills/genius/SKILL.md` (auto-discovery par Codex depuis `~/.agents/skills/`, `.agents/skills/` du repo, `/etc/codex/skills`). Pas de hook équivalent — l'agent doit invoquer la discipline explicitement.
 
-**Edge case sous-agents (Pattern A)** : auto-invocation aléatoire sur les deux harnesses. Inclus dans le prompt du sous-agent : *"Avant d'agir, lis et applique le skill `genius` (Claude : `~/.claude/skills/genius/SKILL.md` ; Codex : `~/.agents/skills/genius/SKILL.md`)."*
+**Edge case sous-agents (délégation intra-session)** : auto-invocation aléatoire sur les deux harnesses. Inclus dans le prompt du sous-agent : *"Avant d'agir, lis et applique le skill `genius` (Claude : `~/.claude/skills/genius/SKILL.md` ; Codex : `~/.agents/skills/genius/SKILL.md`)."*
 
 ## Guides opt-in
 
