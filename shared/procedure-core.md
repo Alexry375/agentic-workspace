@@ -1,58 +1,55 @@
 # Procédure workspace
 
-> Tu es l'agent d'un workspace. La session main (chez l'humain) a écrit
-> `inputs/prompt.md` comme **spec autoritaire**. Tu bosses en autonomie totale
-> du début à la fin. La main t'audite à la livraison — pas de checkpoint
-> humain entre temps.
+Tu es l'agent de ce workspace. `inputs/` est le contrat : scellé, hashé, lecture
+seule. Aucun humain ne répondra en cours de route. La main auditera ta livraison
+en ré-exécutant `inputs/checks/` **plus des vérifications que tu ne verras
+jamais**, et en lisant ton code. Le seul moyen de tout passer : faire réellement
+le travail demandé, par le chemin demandé.
 
 ## Boot
 
-1. `aw start` immédiatement (marque le début du timer).
-2. Lis `inputs/prompt.md`. Puis le reste de `inputs/`.
-3. Si `prompt.md` est incomplet ou contradictoire : `outputs/blocked.md` + termine.
-   **Ne devine pas l'intention de la main.**
+1. `aw start`. S'il affiche REPRISE : lis `outputs/journal.md` §Reprise, vérifie
+   l'état annoncé, continue. S'il refuse : copie son message dans
+   `outputs/blocked.md`, termine.
+2. Lis `inputs/prompt.md` en entier, puis le reste d'`inputs/`. Lance `aw check` :
+   l'état initial attendu est rouge. Spec incomplète ou contradictoire →
+   `outputs/blocked.md`, termine. Ne devine pas l'intention de la main.
+3. Charge la discipline `genius` (bloc harness en fin de fichier).
 
-## Cadrage strict
+## ALWAYS
 
-- **Pas de questions humain.** Tout est dans `inputs/`.
-- **Scope borné par `prompt.md`.** Travail adjacent identifié → `outputs/result.md` §Adjacent work, pas exécuté.
-- **`inputs/` en lecture seule.** Copie vers `outputs/work/` si besoin de modifier.
+- Après chaque étape coûteuse : `aw check`. Un vert qui repasse rouge = stop and fix.
+- Chaque ligne livrée se justifie par un done-criterion du prompt (diff minimal).
+- Avant toute action destructive ou dépendance externe : probe de 30 s — le tool
+  répond ? le format réel correspond ? le prérequis existe ?
+- Toute métrique rapportée a une référence indépendante : baseline triviale,
+  oracle disjoint du code mesuré, ou éval annotée. Sinon écris « non mesuré ».
+- `journal.md` §Decision Log : toute décision non triviale et toute divergence vs
+  `prompt.md`, **au moment où tu la prends** — pas au bilan. §Reprise : toujours à
+  jour (état exact + prochaine action) — ta session peut mourir à tout moment.
 
-## Pendant l'exécution
+## NEVER
 
-- **Discipline `genius`** (table L1-L5, format bayésien, principes Alexis) sur toute affirmation factuelle, hypothèse, claim de complétion. Voir bloc "Discipline genius" plus bas pour comment elle est chargée sur ton harness.
-- **Ne fake pas le chemin.** Si le prompt te demande *X via Y*, ton test doit prouver que **Y a réellement été exécuté**, pas juste que X a été produit. Étiquette ≠ chemin. Construire une config sans l'utiliser, retourner une valeur en dur, stubber un backend en gardant le label — tout ça = échec, pas livraison. Tout compromis assumé va dans `result.md` §Not done avec justification. (Incident fondateur : `reports/2026-06-07-codex-reward-hacking-operator-claw3d.md`.)
-- **Hold-out** : si tu itères sur un dataset A jusqu'à passing, le score sur A est faussé. Mesure et rapporte sur un B intouché.
-- **Processus longs (>30 s)** : background + monitor logs. Pas d'attente passive.
-- **Recherche web** : pour syntaxe API, limites plateforme, état de l'art. Cutoff training ≠ état actuel.
+- Faire passer un check en contournant l'intention : stub étiqueté, valeur en
+  dur, config construite mais inutilisée, test sur un état ou un timing que le
+  déploiement réel ne produit pas tout seul. « via X » = X réellement exécuté,
+  prouvé.
+- Modifier `inputs/`, `CLAUDE.md` ou `AGENTS.md` (hashés — détection certaine).
+  Besoin d'une copie modifiable → `outputs/work/`.
+- Élargir le scope : travail adjacent → `result.md` §Adjacent work, non exécuté.
+- Insister plus de 2 fois sur le même blocage → `outputs/blocked.md` (essayé /
+  manque / 2-3 options avec conséquence), une seule fois, puis termine. Un échec
+  déclaré est une livraison valide ; un succès maquillé non.
 
-## Délégation intra-session
+## Livraison
 
-Pour Explore, Plan, audit, analyse parallèle. Le sous-agent rend un résumé structuré = ta compaction implicite. **Mécanisme exact : voir bloc "Délégation intra-session" plus bas (dépend du harness).**
-
-## Audit adversarial avant complétion
-
-Trigger 1 : avant tout claim de complétion finale.
-Trigger 2 : après toute avancée majeure (feature end-to-end, archi committée, 1ère livrable d'un module, pivot).
-
-1. Lance un sous-agent `audit-adversarial` (via délégation intra-session) : *"Attaque code (bugs, edge cases, fichiers oubliés), archi (choix structurels fragiles, hypothèses implicites), cadrage (la métrique optimisée correspond-elle au prompt initial ?). Classe CRITIQUE / IMPORTANT / MINEUR. Cite fichier:ligne ou décision pour chaque finding."*
-2. Traite CRITIQUE et IMPORTANT. Re-audit après.
-3. Finalise `outputs/`.
-
-## Format `outputs/`
-
-- **`outputs/result.md`** — structuré pour la main :
-  - `## Done` — concis, bullets.
-  - `## Not done` — demandé mais non fait, pourquoi.
-  - `## Verification` — comment la main vérifie (commandes, fichiers, valeurs de référence).
-  - `## Adjacent work` — pistes hors scope (optionnel).
-- **`outputs/audit-report.md`** — findings audit + traitement.
-- **`outputs/<artefacts>`** — code, données, docs.
-
-## Si tu es bloqué
-
-Une seule fois : `outputs/blocked.md` (essayé / manque / 2-3 options avec conséquence). Puis termine. **Ne brute-force pas** après 2 tentatives sur le même point — délégation intra-session pour analyse parallèle, ou bloqué.
-
-## Fin de tâche
-
-`aw end` en toute dernière action (marque le timer). **N'appelle pas `aw report`** — la main s'en charge après son audit.
+1. `aw check` final vert — ou échec honnête déclaré.
+2. Tâche longue (>2 h) ou à invariants : fais relire ta livraison par un
+   sous-agent adversarial (code, archi, cadrage) avant le check final.
+3. Relis `prompt.md` ligne à ligne contre ta livraison : chaque divergence →
+   `result.md` §Not done (« aucune » explicite sinon).
+4. `outputs/result.md` : `## Done` (chaque bullet cite son check) · `## Not done`
+   · `## Verification` (commandes exactes + sorties attendues) · `## Adjacent
+   work` (optionnel).
+5. `aw end` en toute dernière action. N'appelle jamais `aw report` — c'est le
+   travail de la main, après audit.

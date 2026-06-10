@@ -1,9 +1,3 @@
-# Personal identity file — copy IDENTITY.example.md to IDENTITY.md and fill it locally.
-IDENTITY.md
-
-# Personal onboarding overlay — machine-specific context for a fresh Claude Code session.
-ONBOARDING.local.md
-
 # Workspaces created by `aw new` live under $PWD/workspaces/ wherever invoked.
 # Defensive guard in case one is created at the repo root.
 workspaces/

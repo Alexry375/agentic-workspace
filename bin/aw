@@ -1,222 +1,475 @@
 #!/usr/bin/env bash
-# aw — agentic-workspace CLI
+# aw — agentic-workspace CLI v2 « contrat scellé »
 #
-# Flow (post-pivot 2026-06-07) :
-#   1. Session main interactive (chez l'humain) : alignement + `aw new <name>`
-#      + remplit `inputs/prompt.md` complet.
-#   2. Humain lance une session dédiée : `cd workspaces/<name> && claude`.
-#      L'agent appelle `aw start` au boot, bosse, `aw end` à sa dernière action.
-#   3. Main reprend, audit la livraison, appelle `aw report <name> "<note>"`
-#      qui lit les timestamps et écrit le bilan + duration_seconds.
+# Flow :
+#   main :  aw new <name> → remplit prompt.md + checks/ → aw seal <name>
+#   agent : aw start → travaille (aw check en boucle) → aw end
+#   main :  aw audit <name> --mode code → lecture du code → aw report <name> ok "..."
 #
-# Config : ~/.agentic-workspace/config.json (créé par install.sh).
+# Décision d'architecture : reports/2026-06-11-v2-redesign-contract-sealed.md
+# Pas de config.json : le repo est localisé via readlink -f $0.
 
 set -euo pipefail
 
-CONFIG_DIR="$HOME/.agentic-workspace"
-CONFIG_FILE="$CONFIG_DIR/config.json"
+REPO_PATH="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+STATE_DIR="$HOME/.agentic-workspace"
+REPORTS_PATH="${AW_REPORTS:-$STATE_DIR/reports.jsonl}"
+HOLDOUT_DIR="$STATE_DIR/holdout"
+CHECK_TIMEOUT="${AW_CHECK_TIMEOUT:-120}"
 
-load_config() {
-  if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Error: no config at $CONFIG_FILE." >&2
-    echo "Run install.sh from the agentic-workspace repo to create it." >&2
-    exit 1
-  fi
-  REPO_PATH="$(jq -r '.repo_path' "$CONFIG_FILE")"
-  REPORTS_PATH="$(jq -r '.reports_path' "$CONFIG_FILE")"
-  if [ -z "$REPO_PATH" ] || [ ! -d "$REPO_PATH" ]; then
-    echo "Error: repo_path '$REPO_PATH' from $CONFIG_FILE is invalid." >&2
-    echo "Re-run install.sh from the current location of the repo." >&2
-    exit 1
-  fi
+# ---------------------------------------------------------------- helpers --
+
+die() { echo "Error: $*" >&2; exit 1; }
+
+assert_in_workspace() {
+  [ -d "$PWD/inputs" ] && [ -d "$PWD/outputs" ] \
+    || die "\$PWD n'est pas un workspace (inputs/ ou outputs/ manquant). Cd dedans d'abord."
 }
+
+ws_path() {  # <name> → path, die si absent
+  local target="$PWD/workspaces/$1"
+  [ -d "$target" ] || die "pas de workspace '$1' sous $PWD/workspaces/"
+  echo "$target"
+}
+
+# Manifest = sha256 de tous les fichiers d'inputs/ (sauf .seal) + CLAUDE.md + AGENTS.md.
+compute_manifest() {  # <ws_path>
+  ( cd "$1" && {
+      find inputs -type f ! -name '.seal' -print0 | sort -z | xargs -0 -r sha256sum
+      for f in CLAUDE.md AGENTS.md; do [ -f "$f" ] && sha256sum "$f"; done
+    } )
+}
+
+verify_seal() {  # <ws_path> → 0 intact, 1 divergent (affiche le diff), 2 pas de seal
+  local ws="$1" seal="$1/inputs/.seal"
+  [ -f "$seal" ] || return 2
+  local current; current="$(compute_manifest "$ws")"
+  local sealed;  sealed="$(grep -v '^#' "$seal")"
+  if [ "$current" = "$sealed" ]; then return 0; fi
+  echo "TAMPERING — divergence inputs/ vs seal :" >&2
+  diff <(echo "$sealed") <(echo "$current") | grep '^[<>]' >&2 || true
+  return 1
+}
+
+# Exécute les checks d'un workspace. Affiche PASS/FAIL, log en jsonl.
+# Sortie globale : 0 si tout passe, 1 sinon. $2 = label du run (agent|seal|audit|end).
+run_checks() {  # <ws_path> <label> [<checks_dir>]
+  local ws="$1" label="$2" dir="${3:-$1/inputs/checks}"
+  local pass=0 fail=0 results="{}"
+  shopt -s nullglob
+  for script in "$dir"/*.sh; do
+    local name; name="$(basename "$script")"
+    if ( cd "$ws" && timeout "$CHECK_TIMEOUT" bash "$script" ) >/dev/null 2>&1; then
+      printf '  PASS  %s\n' "$name" >&2; pass=$((pass+1))
+      results="$(jq -c --arg k "$name" '. + {($k): "pass"}' <<<"$results")"
+    else
+      printf '  FAIL  %s\n' "$name" >&2; fail=$((fail+1))
+      results="$(jq -c --arg k "$name" '. + {($k): "fail"}' <<<"$results")"
+    fi
+  done
+  shopt -u nullglob
+  if [ "$label" != "holdout" ]; then
+    jq -nc --arg ts "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" --arg label "$label" \
+           --argjson results "$results" \
+           '{ts:$ts,label:$label,results:$results}' >> "$ws/outputs/checks-log.jsonl"
+  fi
+  echo "${pass}/$((pass+fail))"
+  [ "$fail" -eq 0 ]
+}
+
+# Contenu réel (non-commentaire HTML, non-vide) sous une section ## d'un markdown.
+section_has_content() {  # <file> <section>
+  awk -v sec="## $2" '
+    /<!--/    {c=1}
+    {ic=c}
+    /-->/     {c=0}
+    $0 == sec {f=1; next}
+    /^## /    {f=0}
+    f && NF && !ic {found=1}
+    END {exit !found}
+  ' "$1"
+}
+
+# ------------------------------------------------------------------- help --
 
 cmd_help() {
   cat <<EOF
-aw — agentic-workspace CLI
+aw — agentic-workspace CLI v2 (contrat scellé)
 
-  aw new <name>                Create \$PWD/workspaces/<name>/ (inputs/prompt.md à remplir)
-  aw start                     [workspace agent] Mark timer start (\$PWD/.started_at)
-  aw end                       [workspace agent] Mark timer end   (\$PWD/.ended_at)
-  aw report <name> "<note>"    [main agent] Append bilan + duration_seconds to reports.jsonl
-                               Note prefix convention: ok|ko|partial — free text after
-  aw archive <name>            Touch .archive (workspace done)
-  aw revive <name>             Remove .archive
-  aw list [--all|--archived]   List live workspaces by default
-  aw context                   Print dense brief for an agent (shared/agent-brief.md)
-  aw help                      This help
+  main :
+    aw new <name>                          Workspace + prompt.md squelette + checks/
+    aw seal <name> [--no-checks "<raison>"] [--round N]
+                                           Preflight de la spec puis gel (hash)
+    aw audit <name> --mode code|result-only
+                                           Tampering + checks + hold-out → .audit.json
+    aw report <name> <ok|ko|partial> "<note>" [--round N] [--legacy]
+                                           Bilan auto-rempli → reports.jsonl
+    aw archive <name> [--undo]             Flag .archive
 
-Launch in a workspace:    cd workspaces/<name> && claude
-Archive check in script:  [ -f \$PWD/workspaces/<name>/.archive ] && echo archived || echo live
+  agent (depuis le workspace) :
+    aw start                               Timer + détection reprise (refuse sans seal)
+    aw check                               Exécute inputs/checks/, log le résultat
+    aw end                                 Gate de livraison (result.md structuré)
 
-Config: $CONFIG_FILE
+  tous :
+    aw list [--all|--archived]             Workspaces sous \$PWD/workspaces/
+    aw context                             Brief main session
+
+Hold-out (checks cachés, jamais montrés à l'agent) : $HOLDOUT_DIR/<name>/*.sh
+Reports : $REPORTS_PATH (override : \$AW_REPORTS)
 EOF
 }
 
+# -------------------------------------------------------------------- new --
+
 cmd_new() {
-  if [ $# -ne 1 ]; then
-    echo "Usage: aw new <name>" >&2; exit 1
-  fi
-  load_config
-  local name="$1" target="$PWD/workspaces/$1"
-  if [ -e "$target" ]; then
-    echo "Error: workspace '$name' already exists at $target" >&2; exit 1
-  fi
+  [ $# -eq 1 ] || die "usage: aw new <name>"
+  local name="$1"
+  case "$name" in (*/*|*' '*|'') die "nom invalide : '$name'";; esac
+  local target="$PWD/workspaces/$name"
+  [ -e "$target" ] && die "workspace '$name' existe déjà à $target"
+
   local core="$REPO_PATH/shared/procedure-core.md"
-  local claude_tail="$REPO_PATH/shared/procedure-claude-tail.md"
-  local codex_tail="$REPO_PATH/shared/procedure-codex-tail.md"
-  for f in "$core" "$claude_tail" "$codex_tail"; do
-    [ -f "$f" ] || { echo "Error: $f missing" >&2; exit 1; }
+  local tpl="$REPO_PATH/shared/templates"
+  for f in "$core" "$REPO_PATH/shared/procedure-claude-tail.md" \
+           "$REPO_PATH/shared/procedure-codex-tail.md" \
+           "$tpl/prompt-skeleton.md" "$tpl/journal-skeleton.md"; do
+    [ -f "$f" ] || die "$f manquant"
   done
 
-  mkdir -p "$target/inputs" "$target/outputs"
-  touch "$target/outputs/.gitkeep"
-  : > "$target/inputs/prompt.md"
-  cat "$core" "$claude_tail" > "$target/CLAUDE.md"
-  cat "$core" "$codex_tail" > "$target/AGENTS.md"
+  mkdir -p "$target/inputs/checks" "$target/outputs"
+  cat "$core" "$REPO_PATH/shared/procedure-claude-tail.md" > "$target/CLAUDE.md"
+  cat "$core" "$REPO_PATH/shared/procedure-codex-tail.md"  > "$target/AGENTS.md"
+  cp "$tpl/prompt-skeleton.md"  "$target/inputs/prompt.md"
+  cp "$tpl/journal-skeleton.md" "$target/outputs/journal.md"
 
   echo "Created: $target"
-  echo "Next: fill $target/inputs/prompt.md, then 'cd $target && claude'"
+  echo "Next:"
+  echo "  1. Remplis inputs/prompt.md (les TODO(main)) et écris inputs/checks/NN-*.sh (rouges)."
+  echo "  2. Hold-out (recommandé) : $HOLDOUT_DIR/$name/*.sh — jamais mentionné dans le workspace."
+  echo "  3. aw seal $name   puis l'humain lance : cd $target && codex (ou claude)"
 }
 
-assert_in_workspace() {
-  if [ ! -d "$PWD/inputs" ] || [ ! -d "$PWD/outputs" ]; then
-    echo "Error: \$PWD does not look like a workspace (missing inputs/ or outputs/)." >&2
-    echo "Cd into the workspace first." >&2
+# ------------------------------------------------------------------- seal --
+
+cmd_seal() {
+  local name="" no_checks="" round=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --no-checks) no_checks="${2:?--no-checks exige une raison}"; shift 2;;
+      --round)     round="${2:?--round exige un numéro}"; shift 2;;
+      -*)          die "option inconnue : $1";;
+      *)           [ -n "$name" ] && die "usage: aw seal <name> [--no-checks \"<raison>\"] [--round N]"
+                   name="$1"; shift;;
+    esac
+  done
+  [ -n "$name" ] || die "usage: aw seal <name> [--no-checks \"<raison>\"] [--round N]"
+  local ws; ws="$(ws_path "$name")"
+
+  # Re-seal : interdit après start, sauf round 2+ d'un run terminé.
+  if [ -f "$ws/.started_at" ] && [ -z "$round" ]; then
+    die "déjà démarré — re-seal interdit. Round 2 : aw seal $name --round 2 (exige .ended_at)."
+  fi
+  if [ -n "$round" ] && [ -f "$ws/.started_at" ] && [ ! -f "$ws/.ended_at" ]; then
+    die "--round exige un run terminé (.ended_at absent)."
+  fi
+
+  # 1. Pas de TODO(main) restant dans inputs/.
+  local todos
+  todos="$(grep -rln 'TODO(main)' "$ws/inputs" 2>/dev/null || true)"
+  [ -z "$todos" ] || die "TODO(main) restants — spec incomplète :
+$todos"
+
+  # 2. Sections obligatoires non vides.
+  for sec in "Objectif" "Done-when"; do
+    section_has_content "$ws/inputs/prompt.md" "$sec" \
+      || die "prompt.md : section '## $sec' vide ou absente."
+  done
+  grep -q '^## Clause anti-shortcut' "$ws/inputs/prompt.md" \
+    || die "prompt.md : clause anti-shortcut supprimée — remets-la."
+
+  # 3. Checks : ≥1 check de progrès, chacun ROUGE sur le workspace vierge.
+  shopt -s nullglob
+  local progress=("$ws"/inputs/checks/[0-9][0-9]-*.sh)
+  shopt -u nullglob
+  if [ ${#progress[@]} -eq 0 ] && [ -z "$no_checks" ]; then
+    die "zéro check de progrès (inputs/checks/NN-*.sh). Tâche non scriptable ? --no-checks \"<raison>\" (tracé)."
+  fi
+  # Exigence "rouge" : premier seal seulement (au round 2 les anciens checks passent légitimement).
+  if [ -z "$round" ]; then
+    local c
+    for c in "${progress[@]}"; do
+      if ( cd "$ws" && timeout "$CHECK_TIMEOUT" bash "$c" ) >/dev/null 2>&1; then
+        die "$(basename "$c") passe DÉJÀ sur le workspace vierge — il ne prouve rien. Réécris-le."
+      fi
+    done
+  fi
+
+  # 4. Gel.
+  {
+    echo "# aw-seal ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ') round=${round:-1} no_checks=${no_checks:-}"
+    compute_manifest "$ws"
+  } > "$ws/inputs/.seal"
+  echo "Sealed: $name (${#progress[@]} check(s) de progrès, tous rouges)"
+  [ -n "$no_checks" ] && echo "  no-checks: $no_checks (sera visible dans le report)"
+  echo "Hold-out éventuel : $HOLDOUT_DIR/$name/*.sh"
+}
+
+# ------------------------------------------------------------------ start --
+
+cmd_start() {
+  [ $# -eq 0 ] || die "usage: aw start (sans argument, depuis le workspace)"
+  assert_in_workspace
+  if [ ! -f "$PWD/inputs/.seal" ]; then
+    die "spec non scellée (inputs/.seal absent) — écris outputs/blocked.md et termine."
+  fi
+  if ! verify_seal "$PWD"; then
+    die "inputs/ divergent du seal — écris outputs/blocked.md et termine."
+  fi
+
+  # Harness auto-détecté (informatif).
+  local harness="unknown" _v
+  [ -n "${CLAUDECODE:-}" ] && harness="claude"
+  for _v in "${!CODEX@}"; do harness="codex"; done
+  echo "$harness" > "$PWD/.harness"
+
+  if [ -f "$PWD/.started_at" ]; then
+    local n=1
+    [ -f "$PWD/.resumed" ] && n=$(( $(cat "$PWD/.resumed") + 1 ))
+    echo "$n" > "$PWD/.resumed"
+    echo "REPRISE #$n — lis outputs/journal.md §Reprise, vérifie l'état annoncé, continue."
+  else
+    date -u +%s > "$PWD/.started_at"
+    echo "Timer started ($(date -u)) — harness: $harness"
+  fi
+}
+
+# ------------------------------------------------------------------ check --
+
+cmd_check() {
+  local ws
+  if [ $# -eq 1 ]; then ws="$(ws_path "$1")"; else assert_in_workspace; ws="$PWD"; fi
+  if [ -f "$ws/inputs/.seal" ]; then
+    verify_seal "$ws" || { echo "aw check: refus — corrige le tampering d'abord." >&2; exit 2; }
+  fi
+  local summary
+  if summary="$(run_checks "$ws" "check")"; then
+    echo "Checks: $summary — tout passe."
+  else
+    echo "Checks: $summary"
     exit 1
   fi
 }
 
-cmd_start() {
-  [ $# -eq 0 ] || { echo "Usage: aw start (no args, from inside workspace)" >&2; exit 1; }
-  assert_in_workspace
-  date -u +%s > "$PWD/.started_at"
-  echo "Timer started ($(date -u))"
-}
+# -------------------------------------------------------------------- end --
 
 cmd_end() {
-  [ $# -eq 0 ] || { echo "Usage: aw end (no args, from inside workspace)" >&2; exit 1; }
+  [ $# -eq 0 ] || die "usage: aw end (sans argument, depuis le workspace)"
   assert_in_workspace
+  local r="$PWD/outputs/result.md" b="$PWD/outputs/blocked.md"
+
+  if [ -f "$b" ]; then
+    : # un blocage déclaré est une fin valide, sans autre exigence
+  elif [ -f "$r" ]; then
+    local sec
+    for sec in "Done" "Not done" "Verification"; do
+      grep -q "^## $sec" "$r" || die "result.md : section '## $sec' manquante (§Not done : « aucune » explicite si rien)."
+    done
+    section_has_content "$PWD/outputs/journal.md" "Decision Log" \
+      || section_has_content "$PWD/outputs/journal.md" "Reprise" \
+      || die "journal.md non tenu (Decision Log et Reprise vides) — remplis-le, puis aw end."
+    [ -f "$PWD/outputs/checks-log.jsonl" ] \
+      || die "aucun aw check exécuté — lance-le, traite les FAIL (ou déclare-les en §Not done), puis aw end."
+    run_checks "$PWD" "end" >/dev/null || true   # snapshot final, FAIL toléré si déclaré
+  else
+    die "ni outputs/result.md ni outputs/blocked.md — livre ou déclare le blocage d'abord."
+  fi
+
   date -u +%s > "$PWD/.ended_at"
-  echo "Timer ended   ($(date -u))"
+  echo "Timer ended ($(date -u))"
 }
+
+# ------------------------------------------------------------------ audit --
+
+cmd_audit() {
+  local name="" mode=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --mode) mode="${2:?}"; shift 2;;
+      -*)     die "option inconnue : $1";;
+      *)      name="$1"; shift;;
+    esac
+  done
+  [ -n "$name" ] || die "usage: aw audit <name> --mode code|result-only"
+  case "$mode" in (code|result-only) ;; (*) die "--mode code|result-only obligatoire — le mode d'audit se déclare, toujours.";; esac
+  local ws; ws="$(ws_path "$name")"
+  [ -f "$ws/.ended_at" ] || die "livraison non terminée (.ended_at absent) — l'agent doit finir par aw end."
+
+  local tamper=false
+  echo "— Tampering :"
+  if verify_seal "$ws"; then echo "  inputs/ intact (manifest OK)"; else
+    case $? in
+      1) tamper=true;;
+      2) echo "  pas de seal (workspace pré-v2 ?)"; tamper=null;;
+    esac
+  fi
+
+  echo "— Checks visibles :"
+  local visible; visible="$(run_checks "$ws" "audit")" || true
+
+  local holdout="null"
+  if [ -d "$HOLDOUT_DIR/$name" ]; then
+    echo "— Hold-out :"
+    holdout="\"$(run_checks "$ws" "holdout" "$HOLDOUT_DIR/$name")\"" || true
+  else
+    echo "— Hold-out : aucun ($HOLDOUT_DIR/$name absent)"
+  fi
+
+  jq -nc --arg ts "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" --arg mode "$mode" \
+         --arg visible "$visible" --argjson holdout "$holdout" --argjson tamper "$tamper" \
+         '{ts:$ts,mode:$mode,visible:$visible,holdout:$holdout,tamper:$tamper}' > "$ws/.audit.json"
+  echo "— Écrit : .audit.json (mode=$mode, visible=$visible, holdout=$holdout, tamper=$tamper)"
+  echo ""
+  echo "Phase 2 (humaine) : lis le chemin critique du code — l'incident operator-claw3d"
+  echo "n'était visible QUE là. Commence par journal.md §Decision Log, cherche les"
+  echo "divergences qui N'Y SONT PAS. Puis : aw report $name <ok|ko|partial> \"<note>\""
+}
+
+# ----------------------------------------------------------------- report --
 
 cmd_report() {
-  if [ $# -ne 2 ]; then
-    echo "Usage: aw report <name> \"<note>\"" >&2; exit 1
-  fi
-  load_config
-  local name="$1" note="$2" target="$PWD/workspaces/$1"
-  local started_at="" ended_at="" duration=""
-  [ -f "$target/.started_at" ] && started_at="$(cat "$target/.started_at")"
-  [ -f "$target/.ended_at" ]   && ended_at="$(cat "$target/.ended_at")"
-  if [ -n "$started_at" ] && [ -n "$ended_at" ]; then
-    duration=$(( ended_at - started_at ))
+  local name="" outcome="" note="" round=1 legacy=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --round)  round="${2:?}"; shift 2;;
+      --legacy) legacy=true; shift;;
+      -*)       die "option inconnue : $1";;
+      *) if   [ -z "$name" ];    then name="$1"
+         elif [ -z "$outcome" ]; then outcome="$1"
+         elif [ -z "$note" ];    then note="$1"
+         else die "trop d'arguments"; fi; shift;;
+    esac
+  done
+  [ -n "$name" ] && [ -n "$outcome" ] && [ -n "$note" ] \
+    || die "usage: aw report <name> <ok|ko|partial> \"<note>\" [--round N] [--legacy]"
+  case "$outcome" in (ok|ko|partial) ;; (*) die "outcome '$outcome' invalide (ok|ko|partial)";; esac
+  local ws; ws="$(ws_path "$name")"
+
+  # Anti-doublon : même name + même round déjà reporté → refus.
+  if [ -f "$REPORTS_PATH" ] && jq -e --arg n "$name" --argjson r "$round" \
+       'select(.name == $n and ((.round // 1) == $r))' "$REPORTS_PATH" >/dev/null 2>&1; then
+    die "'$name' round $round déjà reporté — round suivant : --round $((round+1))."
   fi
 
-  local ts; ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  local audit="$ws/.audit.json"
+  if [ "$legacy" = false ]; then
+    [ -f "$audit" ] || die "pas de .audit.json — lance aw audit $name --mode ... d'abord (--legacy pour un workspace pré-v2)."
+    local stale
+    stale="$(find "$ws/outputs" -type f -newer "$audit" -print -quit)"
+    [ -z "$stale" ] || die "outputs/ modifié après l'audit ($stale) — re-lance aw audit $name."
+  fi
+
+  # Durée : .ended_at, fallback mtime outputs (signature de l'oubli), sinon null.
+  local started="" ended="" duration=null end_missing=false
+  [ -f "$ws/.started_at" ] && started="$(cat "$ws/.started_at")"
+  if [ -f "$ws/.ended_at" ]; then ended="$(cat "$ws/.ended_at")"
+  elif [ -n "$started" ]; then
+    ended="$(find "$ws/outputs" -type f -printf '%T@\n' 2>/dev/null | sort -n | tail -1 | cut -d. -f1)"
+    [ -n "$ended" ] && end_missing=true
+  fi
+  [ -n "$started" ] && [ -n "$ended" ] && duration=$((ended - started))
+
+  local harness="unknown" resumed=0
+  [ -f "$ws/.harness" ] && harness="$(cat "$ws/.harness")"
+  [ -f "$ws/.resumed" ] && resumed="$(cat "$ws/.resumed")"
+  local audit_json='{}'
+  [ -f "$audit" ] && audit_json="$(cat "$audit")"
+  local no_checks=""
+  [ -f "$ws/inputs/.seal" ] && no_checks="$(head -1 "$ws/inputs/.seal" | sed -n 's/.*no_checks=\(.*\)$/\1/p')"
+
   mkdir -p "$(dirname "$REPORTS_PATH")"
-
-  if [ -n "$duration" ]; then
-    jq -nc --arg ts "$ts" --arg name "$name" --arg note "$note" \
-           --argjson duration_seconds "$duration" \
-           '{ts:$ts,name:$name,note:$note,duration_seconds:$duration_seconds}' >> "$REPORTS_PATH"
-    echo "Appended report for '$name' (duration ${duration}s) to $REPORTS_PATH"
-  else
-    jq -nc --arg ts "$ts" --arg name "$name" --arg note "$note" \
-           '{ts:$ts,name:$name,note:$note,duration_seconds:null}' >> "$REPORTS_PATH"
-    if [ -z "$started_at" ] && [ -z "$ended_at" ]; then
-      echo "Appended report for '$name' (no timer — aw start/end pas appelés) to $REPORTS_PATH" >&2
-    elif [ -z "$ended_at" ]; then
-      echo "Appended report for '$name' (aw end manquant) to $REPORTS_PATH" >&2
-    fi
-  fi
+  jq -nc --arg ts "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" --arg name "$name" --arg path "$ws" \
+         --arg harness "$harness" --arg outcome "$outcome" --arg note "$note" \
+         --arg no_checks "$no_checks" \
+         --argjson round "$round" --argjson duration "$duration" \
+         --argjson resumed "$resumed" --argjson end_missing "$end_missing" \
+         --argjson audit "$audit_json" \
+         '{schema:2, ts:$ts, name:$name, path:$path, harness:$harness, outcome:$outcome,
+           round:$round,
+           checks:{visible:($audit.visible // null), holdout:($audit.holdout // null),
+                   tamper:(if $audit | has("tamper") then $audit.tamper else null end)},
+           audit_mode:($audit.mode // null), duration_seconds:$duration,
+           resumed:$resumed, end_missing:$end_missing}
+          + (if $no_checks != "" then {no_checks:$no_checks} else {} end)
+          + {note:$note}' >> "$REPORTS_PATH"
+  echo "Reported: $name round $round → $outcome (harness=$harness, duration=${duration}s$([ "$end_missing" = true ] && echo ', aw end OUBLIÉ — durée via mtime'))"
 }
 
-cmd_context() {
-  load_config
-  local brief="$REPO_PATH/shared/agent-brief.md"
-  [ -f "$brief" ] || { echo "Error: $brief missing" >&2; exit 1; }
-  cat "$brief"
-}
+# ---------------------------------------------------- archive/list/context --
 
 cmd_archive() {
-  [ $# -eq 1 ] || { echo "Usage: aw archive <name>" >&2; exit 1; }
-  local target="$PWD/workspaces/$1"
-  [ -d "$target" ] || { echo "Error: no workspace at $target" >&2; exit 1; }
-  touch "$target/.archive"
-  echo "Archived: $target"
-}
-
-cmd_revive() {
-  [ $# -eq 1 ] || { echo "Usage: aw revive <name>" >&2; exit 1; }
-  local target="$PWD/workspaces/$1"
-  [ -d "$target" ] || { echo "Error: no workspace at $target" >&2; exit 1; }
-  rm -f "$target/.archive"
-  echo "Revived: $target"
+  local undo=false name=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --undo) undo=true; shift;;
+      *)      name="$1"; shift;;
+    esac
+  done
+  [ -n "$name" ] || die "usage: aw archive <name> [--undo]"
+  local ws; ws="$(ws_path "$name")"
+  if $undo; then rm -f "$ws/.archive"; echo "Unarchived: $ws"
+  else touch "$ws/.archive"; echo "Archived: $ws"; fi
 }
 
 cmd_list() {
   local mode=live
   while [ $# -gt 0 ]; do
     case "$1" in
-      --all)      mode=all ;;
-      --archived) mode=archived ;;
-      *) echo "Error: unknown option '$1'." >&2; exit 1 ;;
-    esac
-    shift
+      --all) mode=all;; --archived) mode=archived;;
+      *) die "option inconnue : '$1'";;
+    esac; shift
   done
-
   local dir="$PWD/workspaces"
   if [ ! -d "$dir" ] || [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then
-    echo "No workspaces in $dir."
-    echo "Create one with: aw new <name>"
-    return 0
+    echo "No workspaces in $dir. (aw new <name>)"; return 0
   fi
-
-  if [ "$mode" = "all" ]; then
-    printf "%-25s %-10s %-10s %-16s\n" "NAME" "STATUS" "INPUTS" "LAST MODIFIED"
-    printf "%-25s %-10s %-10s %-16s\n" "----" "------" "------" "-------------"
-  else
-    printf "%-25s %-10s %-16s\n" "NAME" "INPUTS" "LAST MODIFIED"
-    printf "%-25s %-10s %-16s\n" "----" "------" "-------------"
-  fi
-
-  local d name input_count mtime status
+  printf "%-28s %-9s %-8s %-7s %-7s %-7s\n" "NAME" "STATUS" "SEALED" "STARTED" "ENDED" "AUDITED"
+  local d name status sealed started ended audited
   for d in "$dir"/*/; do
     [ -d "$d" ] || continue
     name="$(basename "$d")"
     if [ -f "$d/.archive" ]; then status=archived; else status=live; fi
     case "$mode" in
-      live)     [ "$status" = "live" ] || continue ;;
-      archived) [ "$status" = "archived" ] || continue ;;
+      live)     [ "$status" = live ] || continue;;
+      archived) [ "$status" = archived ] || continue;;
     esac
-    input_count="$(find "$d/inputs" -mindepth 1 -not -name '.gitkeep' 2>/dev/null | wc -l)"
-    mtime="$(date -r "$d" '+%Y-%m-%d %H:%M' 2>/dev/null || echo '?')"
-    if [ "$mode" = "all" ]; then
-      printf "%-25s %-10s %-10s %-16s\n" "$name" "$status" "$input_count files" "$mtime"
-    else
-      printf "%-25s %-10s %-16s\n" "$name" "$input_count files" "$mtime"
-    fi
+    sealed=-;  [ -f "$d/inputs/.seal" ]  && sealed=yes
+    started=-; [ -f "$d/.started_at" ]   && started=yes
+    ended=-;   [ -f "$d/.ended_at" ]     && ended=yes
+    audited=-; [ -f "$d/.audit.json" ]   && audited=yes
+    printf "%-28s %-9s %-8s %-7s %-7s %-7s\n" "$name" "$status" "$sealed" "$started" "$ended" "$audited"
   done
 }
 
+cmd_context() {
+  cat "$REPO_PATH/shared/main-brief.md"
+}
+
+# ------------------------------------------------------------------- main --
+
 if [ $# -eq 0 ]; then cmd_help; exit 0; fi
-subcommand="$1"; shift
-case "$subcommand" in
-  new)            cmd_new "$@" ;;
-  start)          cmd_start "$@" ;;
-  end)            cmd_end "$@" ;;
-  report)         cmd_report "$@" ;;
-  archive)        cmd_archive "$@" ;;
-  revive)         cmd_revive "$@" ;;
-  list)           cmd_list "$@" ;;
-  context)        cmd_context "$@" ;;
-  help|-h|--help) cmd_help ;;
-  *)
-    echo "Unknown subcommand: $subcommand" >&2
-    echo "" >&2
-    cmd_help 1>&2
-    exit 1
-    ;;
+sub="$1"; shift
+case "$sub" in
+  new)     cmd_new "$@";;
+  seal)    cmd_seal "$@";;
+  start)   cmd_start "$@";;
+  check)   cmd_check "$@";;
+  end)     cmd_end "$@";;
+  audit)   cmd_audit "$@";;
+  report)  cmd_report "$@";;
+  archive) cmd_archive "$@";;
+  list)    cmd_list "$@";;
+  context) cmd_context "$@";;
+  help|-h|--help) cmd_help;;
+  *) echo "Unknown subcommand: $sub" >&2; echo "" >&2; cmd_help 1>&2; exit 1;;
 esac

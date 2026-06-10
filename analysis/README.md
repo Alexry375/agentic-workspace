@@ -1,9 +1,17 @@
 # analysis/ — méta-études des workspaces terminés
 
-Pour piloter l'évolution de `procedure.md` autrement qu'à l'aveugle : on
-parcourt les workspaces `ok` / `ko` / `partial` du `reports.jsonl`, on
-reconstruit la cause racine de chaque livraison qui a fait défaut, et on
-juge si une discipline ajoutée (test, audit, prompt) aurait changé l'issue.
+Pour piloter l'évolution de `procedure-core.md` et des squelettes autrement
+qu'à l'aveugle : on parcourt les workspaces `ok` / `ko` / `partial` du
+`reports.jsonl`, on reconstruit la cause racine de chaque livraison qui a fait
+défaut, et on juge si une discipline ajoutée (check, gate, prompt) aurait
+changé l'issue. Depuis la v2, commence par `outputs/journal.md` (Decision Log)
+et la ligne de report schema 2 (checks visible/holdout, tamper) — l'archéologie
+manuelle est l'exception.
+
+**Règle d'admission v2** : un brick entre dans `procedure-core.md` ou les
+squelettes sur ≥3 occurrences ici **OU** sur un incident saillant documenté
+dans `reports/` — dans les deux cas, l'embarquement se fait dans le même
+commit que la déclaration.
 
 ## Grille
 
@@ -36,8 +44,9 @@ aurait aidé à la place (audit, prompt, contrainte de cadrage).>
 
 ## Leçon généralisable
 
-<Ce qui mérite éventuellement d'entrer dans procedure.md, ou de rester en
-note ici. ≥3 occurrences avant inclusion.>
+<Ce qui mérite éventuellement d'entrer dans procedure-core.md ou les
+squelettes, ou de rester en note ici. Admission : ≥3 occurrences OU incident
+saillant documenté dans reports/.>
 ```
 
 ## Workflow
@@ -78,7 +87,11 @@ confiance à ce fichier).
 
 ## Patterns émergents
 
-16 analyses au 2026-06-07. Récurrences solides (≥3 occurrences = admission `procedure.md` envisageable) :
+16 analyses au 2026-06-07. Récurrences solides (statut mis à jour au pivot v2
+du 2026-06-11 — les patterns 1, 2+3 fusionnés (probe avant engagement), 4
+(chemin réel, renforcé par l'incident ws2-quota) sont **embarqués** dans
+`procedure-core.md` et les squelettes ; cf.
+`reports/2026-06-11-v2-redesign-contract-sealed.md`) :
 
 ### 1. Métrique acceptée sans référence indépendante — **3 occurrences + 1 résolution ⇒ embarquement justifié**
 
@@ -115,7 +128,7 @@ confiance à ce fichier).
 - `uk_clml` : auto-audit renomme "métrique circulaire" en ajoutant une 4e métrique encore circulaire
 - `relay_x_formex_finalize` : sub-agent d'audit checke `du -sh` au mauvais path → valide suppression dangereuse
 
-**Discipline existante** : Pattern B step 3 de `procedure.md` (audit critique du créateur à la livraison) couvre la cible. À surveiller : la même blind spot peut frapper le sub-agent d'audit lui-même.
+**Discipline existante** : l'audit main à la livraison (v2 : `aw audit` mécanique + lecture du chemin critique, cf. `main-brief.md`) couvre la cible. À surveiller : la même blind spot peut frapper le sub-agent d'audit lui-même.
 
 ### 6. Validation visuelle non-mesurée — **2 occurrences ⇒ veille**
 
