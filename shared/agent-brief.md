@@ -148,6 +148,7 @@ correspond au trigger ci-dessous. Pas de frontmatter, pas d'auto-découverte
 | Guide | Charge si la tâche est |
 |---|---|
 | `shared/guides/reimplementation-parity.md` | ré-implémenter un système existant sur une autre stack / langage / framework, **ou** absorber le cœur d'un repo upstream en l'adaptant à un autre cas d'usage |
+| `shared/guides/duel-agents-on-repo.md` | monter N agents en parallèle (duel ou fan-out) qui **modifient le même dépôt de code**, avec merge propre du gagnant — topologie workspace aw + git worktree imbriqué (`repo/`) |
 
 Différence avec un *skill* (`genius`) : le skill vit user-level et est
 auto-disponible dans toute session du harness ; un *guide* est confiné au
