@@ -47,6 +47,17 @@ Littérature à l'appui : ETH Zurich (fichiers de contexte gras = -20 % de perf)
 2. **Hold-out déterré** (l'agent va le lire) : canari token unique dans le holdout des 2-3 premiers runs Codex, grep transcript/outputs.
 3. **Sur-production de blocked.md** (contrat scellé trop rigide) : seuil décidé d'avance — >2/5 runs bloqués pour défaut de contrat → règle « l'agent peut contester un check dans §Not done avec preuve et livrer quand même ».
 
+## Suivi
+
+- **Premier retex d'usage réel** (2026-06-11, lot de 8 workspaces WS3) :
+  `reports/2026-06-11-v2-premier-run-reel-cout-prep-et-effets-pervers-ws3.md`.
+  Confirme holdouts + auditabilité + anti-shortcut ; documente trois angles non
+  anticipés ici : **coût de prép des checks**, **chute des tests internes** (3/4
+  agents → 0 test quand les checks sont fournis), **faux-rouge structurel** (un
+  check rouge-sur-vierge pour une raison parasite — `addopts="-q"` → `-qq` —
+  passe le gate seal sans jamais virer au vert). Touche directement les risques 1
+  et 3 ci-dessus.
+
 ## Pointeurs
 
 - Série fondatrice : `2026-06-07-codex-reward-hacking-operator-claw3d.md` → `2026-06-09-codex-anti-shortcut-cadrage-confirmed-polish-webapp.md` → `2026-06-10-codex-honest-but-tests-dodge-real-path-ws2-quota.md`
