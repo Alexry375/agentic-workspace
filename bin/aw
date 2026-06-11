@@ -98,8 +98,10 @@ aw — agentic-workspace CLI v2 (contrat scellé)
 
   main :
     aw new <name>                          Workspace + prompt.md squelette + checks/
-    aw seal <name> [--no-checks "<raison>"] [--round N]
-                                           Preflight de la spec puis gel (hash)
+    aw seal <name> [--light "<raison>"] [--round N]
+                                           Preflight de la spec puis gel (hash).
+                                           --light : mode léger sans checks visibles
+                                           (design ouvert / peu scriptable), tracé.
     aw audit <name> --mode code|result-only
                                            Tampering + checks + hold-out → .audit.json
     aw report <name> <ok|ko|partial> "<note>" [--round N] [--legacy]
@@ -138,6 +140,7 @@ cmd_new() {
   done
 
   mkdir -p "$target/inputs/checks" "$target/outputs"
+  echo 2 > "$target/.aw-version"
   cat "$core" "$REPO_PATH/shared/procedure-claude-tail.md" > "$target/CLAUDE.md"
   cat "$core" "$REPO_PATH/shared/procedure-codex-tail.md"  > "$target/AGENTS.md"
   cp "$tpl/prompt-skeleton.md"  "$target/inputs/prompt.md"
@@ -145,9 +148,11 @@ cmd_new() {
 
   echo "Created: $target"
   echo "Next:"
-  echo "  1. Remplis inputs/prompt.md (les TODO(main)) et écris inputs/checks/NN-*.sh (rouges)."
-  echo "  2. Hold-out (recommandé) : $HOLDOUT_DIR/$name/*.sh — jamais mentionné dans le workspace."
-  echo "  3. aw seal $name   puis l'humain lance : cd $target && codex (ou claude)"
+  echo "  1. Remplis inputs/prompt.md (les TODO(main))."
+  echo "  2. Mode scellé (backend-invariant) : inputs/checks/NN-*.sh rouges — modèles : $REPO_PATH/shared/checks-lib/"
+  echo "     Mode léger (design ouvert, peu scriptable) : aw seal $name --light \"<raison>\""
+  echo "  3. Hold-out (recommandé dans les DEUX modes) : $HOLDOUT_DIR/$name/*.sh — jamais mentionné dans le workspace."
+  echo "  4. aw seal $name   puis l'humain lance : cd $target && codex (ou claude)"
 }
 
 # ------------------------------------------------------------------- seal --
@@ -156,14 +161,14 @@ cmd_seal() {
   local name="" no_checks="" round=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --no-checks) no_checks="${2:?--no-checks exige une raison}"; shift 2;;
+      --light|--no-checks) no_checks="${2:?$1 exige une raison}"; shift 2;;
       --round)     round="${2:?--round exige un numéro}"; shift 2;;
       -*)          die "option inconnue : $1";;
-      *)           [ -n "$name" ] && die "usage: aw seal <name> [--no-checks \"<raison>\"] [--round N]"
+      *)           [ -n "$name" ] && die "usage: aw seal <name> [--light \"<raison>\"] [--round N]"
                    name="$1"; shift;;
     esac
   done
-  [ -n "$name" ] || die "usage: aw seal <name> [--no-checks \"<raison>\"] [--round N]"
+  [ -n "$name" ] || die "usage: aw seal <name> [--light \"<raison>\"] [--round N]"
   local ws; ws="$(ws_path "$name")"
 
   # Re-seal : interdit après start, sauf round 2+ d'un run terminé.
@@ -193,11 +198,21 @@ $todos"
   local progress=("$ws"/inputs/checks/[0-9][0-9]-*.sh)
   shopt -u nullglob
   if [ ${#progress[@]} -eq 0 ] && [ -z "$no_checks" ]; then
-    die "zéro check de progrès (inputs/checks/NN-*.sh). Tâche non scriptable ? --no-checks \"<raison>\" (tracé)."
+    die "zéro check de progrès (inputs/checks/NN-*.sh). Tâche non scriptable ou design ouvert ? aw seal $name --light \"<raison>\" (tracé)."
   fi
+
+  # Faux-rouge structurel (retex ws3) : un check qui appelle pytest sans neutraliser
+  # l'addopts scellé du repo cible peut rester rouge même sur du code correct.
+  local c
+  for c in "${progress[@]}"; do
+    if grep -q 'pytest' "$c" && ! grep -q 'addopts' "$c"; then
+      echo "WARN: $(basename "$c") appelle pytest sans neutraliser addopts (-o addopts='') —" >&2
+      echo "      risque de faux-rouge structurel. Modèle : shared/checks-lib/no-regression-pytest.sh" >&2
+      echo "      Vérifie aussi que le check VIRE AU VERT sur un état-cible (le gate ne teste que le rouge)." >&2
+    fi
+  done
   # Exigence "rouge" : premier seal seulement (au round 2 les anciens checks passent légitimement).
   if [ -z "$round" ]; then
-    local c
     for c in "${progress[@]}"; do
       if ( cd "$ws" && timeout "$CHECK_TIMEOUT" bash "$c" ) >/dev/null 2>&1; then
         die "$(basename "$c") passe DÉJÀ sur le workspace vierge — il ne prouve rien. Réécris-le."
@@ -210,8 +225,12 @@ $todos"
     echo "# aw-seal ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ') round=${round:-1} no_checks=${no_checks:-}"
     compute_manifest "$ws"
   } > "$ws/inputs/.seal"
-  echo "Sealed: $name (${#progress[@]} check(s) de progrès, tous rouges)"
-  [ -n "$no_checks" ] && echo "  no-checks: $no_checks (sera visible dans le report)"
+  if [ ${#progress[@]} -eq 0 ]; then
+    echo "Sealed: $name (mode léger — pas de checks visibles ; raison tracée dans le report)"
+  else
+    echo "Sealed: $name (${#progress[@]} check(s) de progrès, tous rouges)"
+  fi
+  [ -n "$no_checks" ] && echo "  light: $no_checks"
   echo "Hold-out éventuel : $HOLDOUT_DIR/$name/*.sh"
 }
 
@@ -221,9 +240,12 @@ cmd_start() {
   [ $# -eq 0 ] || die "usage: aw start (sans argument, depuis le workspace)"
   assert_in_workspace
   if [ ! -f "$PWD/inputs/.seal" ]; then
-    die "spec non scellée (inputs/.seal absent) — écris outputs/blocked.md et termine."
-  fi
-  if ! verify_seal "$PWD"; then
+    if [ -f "$PWD/.aw-version" ]; then
+      die "spec non scellée (inputs/.seal absent) — écris outputs/blocked.md et termine."
+    fi
+    # Workspace pré-v2 (pas de .aw-version) : mode compat, timer seulement.
+    echo "WARN: workspace v1 (pré-seal) — mode compat, pas de vérification de contrat." >&2
+  elif ! verify_seal "$PWD"; then
     die "inputs/ divergent du seal — écris outputs/blocked.md et termine."
   fi
 

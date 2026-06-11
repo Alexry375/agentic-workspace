@@ -10,19 +10,31 @@
 1. **Aligner** avec l'humain — seul moment où poser des questions est possible.
 2. `aw new <name>` → `$PWD/workspaces/<name>/` avec `inputs/prompt.md` squelette
    (marqueurs `TODO(main)`) et `inputs/checks/` à remplir.
-3. **Écrire la spec ET les checks — c'est le même acte.** Un done-criterion sans
-   script = pas un criterion. Pour chaque « via X » : un check qui échoue si X est
-   faké. Profil de tâche → angle d'échec : front/full-stack → gold-plating et
-   divergences (serre les Contraintes) ; backend à invariants → tests fictifs
-   (écris le check sur le câblage réel : même timing, état post-déploiement
-   vierge — incident `ws2-quota`).
-4. **Hold-out** (quasi obligatoire sur tâches à invariants) : 1-3 checks cachés
-   dans `~/.agentic-workspace/holdout/<name>/*.sh` — jamais mentionnés dans le
-   workspace. C'est la seule mitigation anti-reward-hacking validée (les modèles
-   saturent les tests visibles, divergent sur les cachés).
-5. `aw seal <name>` — refuse : `TODO(main)` restant, zéro check, check de progrès
-   déjà vert (il ne prouve rien). Échappement tracé : `--no-checks "<raison>"`.
-   Scelle `inputs/` par hash.
+3. **Choisir le mode** (retex `ws3-liveness` : le contrat scellé coûte cher en
+   prép et ne paie pas partout) :
+   - **Scellé complet** — tâches backend-invariantes à risque de reward-hacking :
+     écrire la spec ET les checks est le même acte. Un done-criterion sans script
+     = pas un criterion. Pour chaque « via X » : un check qui échoue si X est
+     faké. Modèles réutilisables : `shared/checks-lib/` (réduit le coût de prép).
+     Vérifie que chaque check **vire au vert sur un état-cible** — le gate seal ne
+     teste que le rouge, pas l'inverse (faux-rouge structurel : check `pytest`
+     sans `-o addopts=''` resté rouge sur du code correct, 4 sessions polluées).
+   - **Léger** (`aw seal --light "<raison>"`) — design ouvert, duels de
+     conception, tâches peu scriptables : prose + hold-outs, pas de checks
+     visibles. Imposer une surface (noms, signatures) fige le signal « jugement
+     de design », souvent le plus discriminant en duel ; et fournir les checks
+     tue les tests internes des agents (ws3 : 3/4 agents v2 à 0 test vs 9-28 en v1).
+   - Profil de tâche → angle d'échec : front/full-stack → gold-plating et
+     divergences (serre les Contraintes) ; backend à invariants → tests fictifs
+     (check sur le câblage réel : même timing, état post-déploiement vierge —
+     incident `ws2-quota`).
+4. **Hold-out — le dénominateur commun des deux modes** : 1-3 checks cachés dans
+   `~/.agentic-workspace/holdout/<name>/*.sh` — jamais mentionnés dans le
+   workspace. Meilleure brique validée en réel (ws3 : discrimination parfaite
+   sur 4 implémentations) et seule mitigation anti-reward-hacking que la
+   littérature confirme.
+5. `aw seal <name>` — refuse : `TODO(main)` restant, zéro check (sauf `--light`),
+   check de progrès déjà vert (il ne prouve rien). Scelle `inputs/` par hash.
 6. Dis à l'humain : *« Lance `cd workspaces/<name> && codex` (ou `claude`). »*
 7. À la livraison : `aw audit <name> --mode code` — re-hash (tampering),
    ré-exécute les checks visibles, exécute le hold-out, écrit `.audit.json`.
@@ -42,7 +54,7 @@
 | Commande | Qui | Refuse |
 |---|---|---|
 | `aw new <name>` | main | nom existant ou invalide |
-| `aw seal <name> [--no-checks "<raison>"] [--round N]` | main | TODO restants, zéro check, check de progrès vert, re-seal après start (sauf `--round` avec `.ended_at`) |
+| `aw seal <name> [--light "<raison>"] [--round N]` | main | TODO restants, zéro check (sauf `--light`), check de progrès vert, re-seal après start (sauf `--round` avec `.ended_at`) |
 | `aw start` | agent | workspace non scellé ; inputs/ divergent du seal |
 | `aw check [<name>]` | agent et main | tampering (exit 2, rien n'est exécuté) |
 | `aw end` | agent | pas de `result.md` structuré (§Not done obligatoire) ni `blocked.md` ; journal non tenu |
@@ -93,7 +105,10 @@ harness.
 - **Pas de duplication de source de vérité** : agent → CLAUDE.md/AGENTS.md
   inlinés ; main → ce fichier ; humain → README. Le skill `genius` vit au niveau
   user de chaque harness (`~/.claude/skills/`, `~/.agents/skills/`), jamais copié ici.
-- **Risques v2 sous surveillance** (cf. `reports/2026-06-11-v2-redesign-contract-sealed.md`) :
-  checks vacueux (vert au 1er run agent dans `checks-log.jsonl`), hold-out déterré
-  (canari), sur-production de `blocked.md` (>2/5 → assouplir : contestation de
-  check documentée en §Not done).
+- **Risques v2 sous surveillance** (cf. `reports/2026-06-11-v2-redesign-contract-sealed.md`
+  et le retex `2026-06-11-v2-premier-run-reel-cout-prep-et-effets-pervers-ws3.md`) :
+  checks vacueux (vert au 1er run agent dans `checks-log.jsonl`), **faux-rouge
+  structurel** (check qui ne peut jamais verdir — vérifie le vert sur état-cible),
+  hold-out déterré (canari), chute des tests internes quand les checks sont
+  fournis (compte-les à l'audit), sur-production de `blocked.md` (>2/5 →
+  assouplir : contestation de check documentée en §Not done).

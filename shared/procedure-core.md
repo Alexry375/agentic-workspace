@@ -18,7 +18,9 @@ le travail demandé, par le chemin demandé.
 
 ## ALWAYS
 
-- Après chaque étape coûteuse : `aw check`. Un vert qui repasse rouge = stop and fix.
+- Après chaque étape coûteuse : `aw check`. Un vert qui repasse rouge = stop and
+  fix. Les checks d'`inputs/` sont un **minimum**, pas ta suite de tests — écris
+  ta propre couverture au-delà.
 - Chaque ligne livrée se justifie par un done-criterion du prompt (diff minimal).
 - Avant toute action destructive ou dépendance externe : probe de 30 s — le tool
   répond ? le format réel correspond ? le prérequis existe ?
