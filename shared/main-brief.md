@@ -112,3 +112,10 @@ harness.
   hold-out déterré (canari), chute des tests internes quand les checks sont
   fournis (compte-les à l'audit), sur-production de `blocked.md` (>2/5 →
   assouplir : contestation de check documentée en §Not done).
+- **Leçons du duel 3-modèles** (cf. `reports/2026-06-11-duel-3-modeles-port-hermes-loop-fable-opus-codex.md`) :
+  *(a)* un check **légèrement inatteignable pour la bonne raison** = **hold-out
+  d'honnêteté** (qui le signale vs qui le force en douce) — à rendre intentionnel ;
+  *(b)* **« check vert ≠ chemin réel »** : pour tout invariant qui traverse une
+  frontière (process, mount, réseau), le hold-out doit **rejouer la frontière**,
+  pas tester le module isolé ; *(c)* **jamais comparer du stdout sérialisé** dans
+  un check cross-langage — comparer des **valeurs parsées** (`json.loads`).
